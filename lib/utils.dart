@@ -4,9 +4,10 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
   final updatedCart = List<Map<String, dynamic>>.from(cartData);
   final now = DateTime.now();
 
-  // Reset discounts
+  // Reset all discounts first
   for (var item in updatedCart) {
     item['discountApplied'] = 0.0;
+    item['discountQty'] = 0; // new field
   }
 
   final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
@@ -29,7 +30,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     final getQty = rule.getQty ?? 0;
     final discountPercent = (rule.discountPercent) / 100.0;
     final discountAmount = (rule.discountAmount).toDouble();
-    final maxUse = rule.maxUse; // NEW FIELD
+    final maxUse = rule.maxUse;
 
     final sourceItem = updatedCart.firstWhere((i) => i['id'] == itemId, orElse: () => {});
     if (sourceItem.isEmpty) continue;
@@ -38,6 +39,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     if (targetItem.isEmpty) continue;
 
     double discountValue = 0.0;
+    int discountedQty = 0;
 
     // -------------------------
     // APPLY RULE TYPES
@@ -47,6 +49,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
       if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
 
       final freeCount = eligibleSets * getQty;
+      discountedQty = freeCount;
       discountValue = freeCount * targetItem['price'] * discountPercent;
     } else if (ruleType == 'CROSS_BOGO' || ruleType == 'CROSS_DISCOUNT') {
       if (sourceItem['qty'] >= buyQty && targetItem['qty'] > 0) {
@@ -54,6 +57,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
         if (maxUse != null && eligibleQty > maxUse) eligibleQty = maxUse;
 
         final affectedQty = eligibleQty > targetItem['qty'] ? targetItem['qty'] : eligibleQty;
+        discountedQty = affectedQty;
         discountValue = affectedQty * targetItem['price'] * discountPercent;
       }
     } else if (ruleType == 'VOLUME') {
@@ -62,21 +66,23 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
         var eligibleSets = qty ~/ buyQty;
         if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
 
-        final discountedQty = eligibleSets * buyQty;
-        discountValue = discountedQty * sourceItem['price'] * discountPercent;
+        final discountedQtyCalc = eligibleSets * buyQty;
+        discountedQty = discountedQtyCalc;
+        discountValue = discountedQtyCalc * sourceItem['price'] * discountPercent;
       }
     } else if (ruleType == 'AMOUNT') {
       final qty = sourceItem['qty'];
       var eligibleSets = qty ~/ buyQty;
       if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
 
+      discountedQty = eligibleSets * buyQty;
       discountValue = eligibleSets * discountAmount;
     }
 
-    if (discountValue <= 0) continue;
+    if (discountValue <= 0 || discountedQty <= 0) continue;
 
     discountCandidatesBySource.putIfAbsent(itemId, () => []);
-    discountCandidatesBySource[itemId]!.add(_DiscountCandidate(targetItemId ?? itemId, discountValue));
+    discountCandidatesBySource[itemId]!.add(_DiscountCandidate(targetItemId ?? itemId, discountValue, discountedQty));
   }
 
   // -------------------------
@@ -89,6 +95,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     final targetItem = updatedCart.firstWhere((i) => i['id'] == biggest.targetId, orElse: () => {});
     if (targetItem.isNotEmpty) {
       targetItem['discountApplied'] = biggest.value;
+      targetItem['discountQty'] = biggest.discountQty;
     }
   }
 
@@ -98,5 +105,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
 class _DiscountCandidate {
   final int targetId;
   final double value;
-  _DiscountCandidate(this.targetId, this.value);
+  final int discountQty;
+
+  _DiscountCandidate(this.targetId, this.value, this.discountQty);
 }

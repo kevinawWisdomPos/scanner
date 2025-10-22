@@ -276,37 +276,177 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                     },
                   ),
                 ),
-                if (_cartData.isNotEmpty)
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    padding: const EdgeInsets.all(8),
-                    color: Colors.grey.shade100,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("CART", style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _cartData.length,
-                            itemBuilder: (context, index) {
-                              final item = _cartData[index];
-                              final total = (item['price'] * item['qty']) - item['discountApplied'];
-                              return Text(
-                                "${item['name']} - ${item['qty']} pcs "
-                                " | Disc: ${item['discountApplied'].toStringAsFixed(2)} "
-                                "| Total: ${total.toStringAsFixed(2)}",
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                _cart(),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _cart() {
+    if (_cartData.isEmpty) return const SizedBox.shrink();
+
+    // Split items by name + discount combination
+    final List<Map<String, dynamic>> separatedItems = [];
+
+    for (var item in _cartData) {
+      // If same item name and same discountApplied exists, combine qty
+      final existingIndex = separatedItems.indexWhere(
+        (e) => e['name'] == item['name'] && (e['discountApplied'] ?? 0) == (item['discountApplied'] ?? 0),
+      );
+
+      if (existingIndex != -1) {
+        separatedItems[existingIndex]['qty'] += item['qty'];
+      } else {
+        separatedItems.add(Map<String, dynamic>.from(item));
+      }
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 320),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.grey.shade300, offset: const Offset(0, 2), blurRadius: 4)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("🛒 CART", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+
+          Expanded(
+            child: ListView.builder(
+              itemCount: separatedItems.length,
+              itemBuilder: (context, index) {
+                return _cartCard(separatedItems, index);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cartCard(List<Map<String, dynamic>> separatedItems, int index) {
+    final item = separatedItems[index];
+    final hasDiscount = (item['discountApplied'] ?? 0) > 0;
+    final discountQty = (item['discountQty'] ?? 0);
+    final price = (item['price'] ?? 0).toDouble();
+    final qty = (item['qty'] ?? 0).toInt();
+    final discount = (item['discountApplied'] ?? 0).toDouble();
+    final total = (price * qty) - discount;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      decoration: BoxDecoration(
+        color: hasDiscount ? Colors.green.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: hasDiscount ? Colors.green.shade300 : Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      item['name'] ?? '',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: hasDiscount ? Colors.green.shade800 : Colors.black87,
+                      ),
+                    ),
+                    if (hasDiscount)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.green.shade200, borderRadius: BorderRadius.circular(6)),
+                        child: const Text(
+                          "DISCOUNTED",
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text("${qty - discountQty} pcs  •  ", style: const TextStyle(fontSize: 13)),
+                    Text(
+                      "Total: ${total.toStringAsFixed(2)}",
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ],
+                ),
+                if (hasDiscount) ...[
+                  Row(
+                    children: [
+                      Text("$discountQty pcs  •  ", style: const TextStyle(fontSize: 13)),
+                      if (hasDiscount)
+                        Text(
+                          "Disc: ${discount.toStringAsFixed(2)}",
+                          style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w500),
+                        ),
+                    ],
+                  ),
+
+                  Row(
+                    children: [
+                      Text("Total $qty pcs  •  ", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      if (hasDiscount)
+                        Text(
+                          "Subtotal: ${total + discount}",
+                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: Colors.grey),
+            onPressed: () {
+              _showManualDiscountDialog(item);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showManualDiscountDialog(Map<String, dynamic> item) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Manual Discount - ${item['name']}"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: "Discount amount"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text) ?? 0.0;
+              setState(() {
+                item['discountApplied'] = value;
+              });
+              Navigator.pop(context);
+            },
+            child: const Text("Apply"),
+          ),
+        ],
       ),
     );
   }

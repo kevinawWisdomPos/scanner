@@ -12,6 +12,7 @@ class DiscountRule {
   final DateTime? endDate;
 
   final int? maxUse;
+  final bool isolated;
 
   DiscountRule({
     required this.type,
@@ -25,6 +26,7 @@ class DiscountRule {
     this.startDate,
     this.endDate,
     this.maxUse,
+    this.isolated = false,
   });
 
   static final List<DiscountRule> discountRules = [
