@@ -1,23 +1,89 @@
 class DiscountRule {
-  final String id;
-  final String type; // "BOGO", "VOLUME"
-  final int? buyQty;
+  final String type;
+  final int itemId;
+  final int? targetItemId;
+  final String description;
+  final int buyQty;
   final int? getQty;
-  final int? minQty;
-  final double? discount; // e.g. 0.2 = 20% off
-  final int? buyItemId; // item that must be bought
-  final int? getItemId; // item that will be discounted
-  final bool isFree; // if true, discount = 100%
+  final double discountPercent;
+  final double discountAmount;
 
-  const DiscountRule({
-    required this.id,
+  final DateTime? startDate;
+  final DateTime? endDate;
+
+  DiscountRule({
     required this.type,
-    this.buyQty,
+    required this.itemId,
+    this.targetItemId,
+    required this.description,
+    required this.buyQty,
     this.getQty,
-    this.minQty,
-    this.discount,
-    this.buyItemId,
-    this.getItemId,
-    this.isFree = false,
+    this.discountPercent = 0,
+    this.discountAmount = 0,
+    this.startDate,
+    this.endDate,
   });
+
+  static final List<DiscountRule> discountRules = [
+    DiscountRule(
+      type: "BOGO",
+      itemId: 40000,
+      description: "Buy 1 Coca Cola, get 1 Disc 50%",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 10,
+    ),
+    DiscountRule(
+      type: "BOGO",
+      itemId: 40000,
+      description: "Buy 1 Coca Cola, get 1 Disc 50% in specific time",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 25,
+      startDate: DateTime(2025, 10, 22, 14, 0, 0),
+      endDate: DateTime(2025, 10, 22, 15, 0, 0),
+    ),
+    DiscountRule(
+      type: "BOGO",
+      itemId: 40001,
+      targetItemId: 40001,
+      description: "Buy 1 Fanta, get 1 Disc 40%",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 40,
+    ),
+    DiscountRule(
+      type: "CROSS_BOGO",
+      itemId: 40001,
+      targetItemId: 40002,
+      description: "Buy 1 Fanta, get 1 Sprite free",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 50,
+    ),
+    DiscountRule(type: "VOLUME", itemId: 40003, description: "Buy 5 Water, get 50%", buyQty: 5, discountPercent: 50),
+    DiscountRule(
+      type: "AMOUNT",
+      itemId: 40004,
+      description: "Buy 5 Pocari, get \$20000 off",
+      buyQty: 5,
+      discountPercent: 10,
+    ),
+    DiscountRule(
+      type: "BOGO",
+      itemId: 40005,
+      description: "Buy 1 Bomb, get 1 Disc 50%",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 50,
+    ),
+    DiscountRule(
+      type: "VOLUME",
+      itemId: 40005,
+      description: "Buy 5 Bomb, get 5 Disc 50%",
+      buyQty: 1,
+      getQty: 1,
+      discountPercent: 50,
+    ),
+  ];
 }

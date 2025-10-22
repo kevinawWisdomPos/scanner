@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:scanner/data.dart';
+import 'package:scanner/models/discount.dart';
+import 'package:scanner/utils.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class HardwareScannerPage extends StatefulWidget {
@@ -63,7 +65,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     }
 
     // Recalculate discounts after every scan
-    final newCart = recalculateDiscounts(_cartData, discountRules);
+    final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules);
 
     _cartData
       ..clear()
@@ -308,119 +310,4 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
       ),
     );
   }
-}
-
-/// Example of dynamic discount rules
-final List<Map<String, dynamic>> discountRules = [
-  {
-    "id": 1,
-    "type": "BOGO",
-    "itemId": 40000,
-    "description": "Buy 1 Coca Cola, get 1 free",
-    "buyQty": 1,
-    "getQty": 1,
-    "discountPercent": 40,
-  },
-  {
-    "id": 2,
-    "type": "CROSS_BOGO",
-    "itemId": 40000,
-    "targetItemId": 40001,
-    "description": "Buy 1 Coca Cola, get 1 Fanta free",
-    "buyQty": 1,
-    "getQty": 1,
-    "discountPercent": 50,
-  },
-  {
-    "id": 3,
-    "type": "VOLUME",
-    "itemId": 40000,
-    "description": "Buy 1 Coca Cola, get 1 free",
-    "minQty": 5,
-    "discountPercent": 50,
-  },
-  {
-    "id": 4,
-    "type": "VOLUME",
-    "itemId": 40002,
-    "description": "Buy 5 Sprite, get 10% off all",
-    "minQty": 5,
-    "discountPercent": 10,
-  },
-];
-List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartData, List<Map<String, dynamic>> rules) {
-  final updatedCart = List<Map<String, dynamic>>.from(cartData);
-
-  // Reset all discounts first
-  for (var item in updatedCart) {
-    item['discountApplied'] = 0.0;
-  }
-
-  // Group possible discounts by source item
-  final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
-
-  for (var rule in rules) {
-    final ruleType = rule['type'];
-    final itemId = rule['itemId'];
-    final targetItemId = rule['targetItemId'];
-    final buyQty = rule['buyQty'] ?? 1;
-    final getQty = rule['getQty'] ?? 1;
-    final discountPercent = (rule['discountPercent'] ?? 0) / 100.0;
-
-    // Find source (the item being bought)
-    final sourceItem = updatedCart.firstWhere((i) => i['id'] == itemId, orElse: () => {});
-    if (sourceItem.isEmpty) continue;
-
-    // Find target (the item that gets discounted)
-    final targetItem = updatedCart.firstWhere((i) => i['id'] == (targetItemId ?? itemId), orElse: () => {});
-    if (targetItem.isEmpty) continue;
-
-    double discountValue = 0.0;
-
-    // --- Calculate rule discount ---
-    if (ruleType == 'BOGO') {
-      final eligibleSets = sourceItem['qty'] ~/ (buyQty + getQty);
-      final freeItemCount = eligibleSets * getQty;
-      discountValue = freeItemCount * targetItem['price'] * discountPercent;
-    } else if (ruleType == 'VOLUME') {
-      if (sourceItem['qty'] >= (rule['minQty'] ?? 0)) {
-        discountValue = sourceItem['price'] * sourceItem['qty'] * discountPercent;
-      }
-    } else if (ruleType == 'CROSS_BOGO' || ruleType == 'CROSS_DISCOUNT') {
-      if (sourceItem['qty'] >= buyQty && targetItem['qty'] > 0) {
-        final eligibleQty = (sourceItem['qty'] ~/ buyQty) * getQty;
-        final affectedQty = eligibleQty > targetItem['qty'] ? targetItem['qty'] : eligibleQty;
-        discountValue = affectedQty * targetItem['price'] * discountPercent;
-      }
-    }
-
-    if (discountValue <= 0) continue;
-
-    // Store discount rules under its source item ID
-    discountCandidatesBySource.putIfAbsent(itemId, () => []);
-    discountCandidatesBySource[itemId]!.add(_DiscountCandidate(targetItemId ?? itemId, discountValue));
-  }
-
-  // sorting biggest discount value
-  for (var sourceId in discountCandidatesBySource.keys) {
-    // dicount value per rules
-    final candidates = discountCandidatesBySource[sourceId]!;
-
-    // find biggest discount
-    final biggest = candidates.reduce((a, b) => a.value > b.value ? a : b);
-
-    // apply the biggest to target item
-    final targetItem = updatedCart.firstWhere((i) => i['id'] == biggest.targetId, orElse: () => {});
-    if (targetItem.isNotEmpty) {
-      targetItem['discountApplied'] = biggest.value;
-    }
-  }
-
-  return updatedCart;
-}
-
-class _DiscountCandidate {
-  final int targetId;
-  final double value;
-  _DiscountCandidate(this.targetId, this.value);
 }

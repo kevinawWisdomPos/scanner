@@ -23,6 +23,7 @@ class Data {
     const conditions = ['New', 'Used', 'Refurbished'];
     const colors = ['Black', 'White', 'Silver', 'Gray', 'Blue', 'Red'];
 
+    dummyItems.addAll(generateValidData());
     for (int i = 1; i <= 30000; i++) {
       final itemName = '${itemNames[random.nextInt(itemNames.length)]} $i';
       final sku = 'SKU-${100000 + i}';
@@ -69,11 +70,6 @@ class Data {
         'supplier': supplier,
       });
     }
-
-    dummyItems.addAll(generateValidData());
-
-    print('Generated ${dummyItems.length} item rows');
-    print(dummyItems.take(1).toList()); // preview first 3 rows
 
     return dummyItems;
   }
@@ -144,6 +140,75 @@ class Data {
         'height': 20,
         'depth': 10,
         'barcode': 'BC02',
+        'dateAdded': DateTime.now().toIso8601String(),
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'isAvailable': true,
+        'supplier': 'Supplier 0',
+      },
+      {
+        'id': 40003,
+        'name': 'Water',
+        'sku': 'SKU-100003',
+        'category': 'Sample',
+        'brand': 'TestBrand',
+        'condition': 'New',
+        'color': 'Black',
+        'price': 13000.00,
+        'stock': 10,
+        'rating': 5.0,
+        'discount': 0,
+        'sold': 0,
+        'weight': 1.5,
+        'width': 30,
+        'height': 30,
+        'depth': 10,
+        'barcode': 'BC03',
+        'dateAdded': DateTime.now().toIso8601String(),
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'isAvailable': true,
+        'supplier': 'Supplier 0',
+      },
+      {
+        'id': 40004,
+        'name': 'Pocari',
+        'sku': 'SKU-100004',
+        'category': 'Sample',
+        'brand': 'TestBrand',
+        'condition': 'New',
+        'color': 'Black',
+        'price': 14000.00,
+        'stock': 10,
+        'rating': 5.0,
+        'discount': 0,
+        'sold': 0,
+        'weight': 1.5,
+        'width': 40,
+        'height': 40,
+        'depth': 10,
+        'barcode': 'BC04',
+        'dateAdded': DateTime.now().toIso8601String(),
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'isAvailable': true,
+        'supplier': 'Supplier 0',
+      },
+      {
+        'id': 40005,
+        'name': 'Bomb',
+        'sku': 'SKU-100005',
+        'category': 'Sample',
+        'brand': 'TestBrand',
+        'condition': 'New',
+        'color': 'Black',
+        'price': 15000.00,
+        'stock': 10,
+        'rating': 5.0,
+        'discount': 0,
+        'sold': 0,
+        'weight': 1.5,
+        'width': 50,
+        'height': 50,
+        'depth': 10,
+        'barcode': 'BC05',
         'dateAdded': DateTime.now().toIso8601String(),
         'lastUpdated': DateTime.now().toIso8601String(),
         'isAvailable': true,
