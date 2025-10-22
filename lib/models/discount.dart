@@ -63,7 +63,8 @@ class DiscountRule {
       description: "Buy 1 Fanta, get 1 Sprite free",
       buyQty: 1,
       getQty: 1,
-      discountPercent: 50,
+      discountPercent: 80,
+      maxUse: 2,
     ),
     DiscountRule(type: "VOLUME", itemId: 40003, description: "Buy 5 Water, get 50%", buyQty: 5, discountPercent: 50),
     DiscountRule(

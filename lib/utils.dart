@@ -4,12 +4,11 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
   final updatedCart = List<Map<String, dynamic>>.from(cartData);
   final now = DateTime.now();
 
-  // Reset all discounts first
+  // Reset discounts
   for (var item in updatedCart) {
     item['discountApplied'] = 0.0;
   }
 
-  // Store discount candidates grouped by source
   final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
 
   for (var rule in rules) {
@@ -23,9 +22,6 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
 
     if (!isActive) continue;
 
-    // -------------------------
-    // BASIC INFO
-    // -------------------------
     final ruleType = rule.type;
     final itemId = rule.itemId;
     final targetItemId = rule.targetItemId;
@@ -33,8 +29,8 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     final getQty = rule.getQty ?? 0;
     final discountPercent = (rule.discountPercent) / 100.0;
     final discountAmount = (rule.discountAmount).toDouble();
+    final maxUse = rule.maxUse; // NEW FIELD
 
-    // Find items
     final sourceItem = updatedCart.firstWhere((i) => i['id'] == itemId, orElse: () => {});
     if (sourceItem.isEmpty) continue;
 
@@ -47,43 +43,49 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     // APPLY RULE TYPES
     // -------------------------
     if (ruleType == 'BOGO') {
-      final eligibleSets = sourceItem['qty'] ~/ (buyQty + getQty);
+      var eligibleSets = sourceItem['qty'] ~/ (buyQty + getQty);
+      if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
+
       final freeCount = eligibleSets * getQty;
       discountValue = freeCount * targetItem['price'] * discountPercent;
     } else if (ruleType == 'CROSS_BOGO' || ruleType == 'CROSS_DISCOUNT') {
       if (sourceItem['qty'] >= buyQty && targetItem['qty'] > 0) {
-        final eligibleQty = (sourceItem['qty'] ~/ buyQty) * getQty;
+        var eligibleQty = (sourceItem['qty'] ~/ buyQty) * getQty;
+        if (maxUse != null && eligibleQty > maxUse) eligibleQty = maxUse;
+
         final affectedQty = eligibleQty > targetItem['qty'] ? targetItem['qty'] : eligibleQty;
         discountValue = affectedQty * targetItem['price'] * discountPercent;
       }
     } else if (ruleType == 'VOLUME') {
       final qty = sourceItem['qty'];
       if (qty >= buyQty) {
-        final eligibleSets = qty ~/ buyQty;
+        var eligibleSets = qty ~/ buyQty;
+        if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
+
         final discountedQty = eligibleSets * buyQty;
         discountValue = discountedQty * sourceItem['price'] * discountPercent;
       }
     } else if (ruleType == 'AMOUNT') {
       final qty = sourceItem['qty'];
-      final eligibleSets = qty ~/ buyQty;
+      var eligibleSets = qty ~/ buyQty;
+      if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
+
       discountValue = eligibleSets * discountAmount;
     }
 
     if (discountValue <= 0) continue;
 
-    // -------------------------
-    // STORE DISCOUNT CANDIDATE
-    // -------------------------
     discountCandidatesBySource.putIfAbsent(itemId, () => []);
     discountCandidatesBySource[itemId]!.add(_DiscountCandidate(targetItemId ?? itemId, discountValue));
   }
 
   // -------------------------
-  // APPLY BIGGEST DISCOUNT PER TARGET ITEM
+  // APPLY BIGGEST DISCOUNT
   // -------------------------
   for (var sourceId in discountCandidatesBySource.keys) {
     final candidates = discountCandidatesBySource[sourceId]!;
     final biggest = candidates.reduce((a, b) => a.value > b.value ? a : b);
+
     final targetItem = updatedCart.firstWhere((i) => i['id'] == biggest.targetId, orElse: () => {});
     if (targetItem.isNotEmpty) {
       targetItem['discountApplied'] = biggest.value;
