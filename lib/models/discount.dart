@@ -45,7 +45,8 @@ class DiscountRule {
       description: "Buy 1 Coca Cola, get 1 Disc 50% in specific time",
       buyQty: 1,
       getQty: 1,
-      discountPercent: 25,
+      discountPercent: 100,
+
       startDate: DateTime(2025, 10, 22, 15, 0, 0),
       endDate: DateTime(2025, 10, 22, 16, 0, 0),
     ),
@@ -57,6 +58,7 @@ class DiscountRule {
       buyQty: 1,
       getQty: 1,
       discountPercent: 40,
+      isolated: true,
     ),
     DiscountRule(
       type: "CROSS_BOGO",

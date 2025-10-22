@@ -82,7 +82,9 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     if (discountValue <= 0 || discountedQty <= 0) continue;
 
     discountCandidatesBySource.putIfAbsent(itemId, () => []);
-    discountCandidatesBySource[itemId]!.add(_DiscountCandidate(targetItemId ?? itemId, discountValue, discountedQty));
+    discountCandidatesBySource[itemId]!.add(
+      _DiscountCandidate(targetItemId ?? itemId, discountValue, discountedQty, isolated: rule.isolated),
+    );
   }
 
   // -------------------------
@@ -96,6 +98,7 @@ List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartD
     if (targetItem.isNotEmpty) {
       targetItem['discountApplied'] = biggest.value;
       targetItem['discountQty'] = biggest.discountQty;
+      targetItem['isolated'] = biggest.isolated;
     }
   }
 
@@ -106,6 +109,7 @@ class _DiscountCandidate {
   final int targetId;
   final double value;
   final int discountQty;
+  final bool isolated;
 
-  _DiscountCandidate(this.targetId, this.value, this.discountQty);
+  _DiscountCandidate(this.targetId, this.value, this.discountQty, {this.isolated = false});
 }

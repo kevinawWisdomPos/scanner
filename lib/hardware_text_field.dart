@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -339,6 +340,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     final qty = (item['qty'] ?? 0).toInt();
     final discount = (item['discountApplied'] ?? 0).toDouble();
     final total = (price * qty) - discount;
+    final isIsolated = item['isolated'] ?? false;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -397,6 +399,12 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                     ],
                   ),
 
+                  if (item['discountInput'] != null)
+                    Text(
+                      "Disc input: ${item['discountInput'].toStringAsFixed(2)}",
+                      style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w500),
+                    ),
+
                   Row(
                     children: [
                       Text("Total $qty pcs  •  ", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
@@ -411,21 +419,25 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.grey),
-            onPressed: () {
-              _showManualDiscountDialog(item);
-            },
+          Visibility(
+            visible: !isIsolated,
+            child: IconButton(
+              icon: const Icon(Icons.more_vert, color: Colors.grey),
+              onPressed: () async {
+                await _showManualDiscountDialog(item);
+                log("message item['discountInput'] : ${item['discountInput']}");
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showManualDiscountDialog(Map<String, dynamic> item) {
+  Future<void> _showManualDiscountDialog(Map<String, dynamic> item) async {
     final controller = TextEditingController();
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text("Manual Discount - ${item['name']}"),
@@ -439,9 +451,9 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           ElevatedButton(
             onPressed: () {
               final value = double.tryParse(controller.text) ?? 0.0;
-              setState(() {
-                item['discountApplied'] = value;
-              });
+              var savedItem = _cartData.firstWhere((element) => item["id"] == element["id"]);
+              savedItem['discountInput'] = value;
+              setState(() {});
               Navigator.pop(context);
             },
             child: const Text("Apply"),
