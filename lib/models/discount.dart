@@ -11,6 +11,8 @@ class DiscountRule {
   final DateTime? startDate;
   final DateTime? endDate;
 
+  final int? maxUse;
+
   DiscountRule({
     required this.type,
     required this.itemId,
@@ -22,6 +24,7 @@ class DiscountRule {
     this.discountAmount = 0,
     this.startDate,
     this.endDate,
+    this.maxUse,
   });
 
   static final List<DiscountRule> discountRules = [
@@ -32,6 +35,7 @@ class DiscountRule {
       buyQty: 1,
       getQty: 1,
       discountPercent: 10,
+      maxUse: 2,
     ),
     DiscountRule(
       type: "BOGO",
@@ -40,8 +44,8 @@ class DiscountRule {
       buyQty: 1,
       getQty: 1,
       discountPercent: 25,
-      startDate: DateTime(2025, 10, 22, 14, 0, 0),
-      endDate: DateTime(2025, 10, 22, 15, 0, 0),
+      startDate: DateTime(2025, 10, 22, 15, 0, 0),
+      endDate: DateTime(2025, 10, 22, 16, 0, 0),
     ),
     DiscountRule(
       type: "BOGO",
@@ -67,7 +71,7 @@ class DiscountRule {
       itemId: 40004,
       description: "Buy 5 Pocari, get \$20000 off",
       buyQty: 5,
-      discountPercent: 10,
+      discountAmount: 20000,
     ),
     DiscountRule(
       type: "BOGO",
@@ -81,8 +85,7 @@ class DiscountRule {
       type: "VOLUME",
       itemId: 40005,
       description: "Buy 5 Bomb, get 5 Disc 50%",
-      buyQty: 1,
-      getQty: 1,
+      buyQty: 5,
       discountPercent: 50,
     ),
   ];
