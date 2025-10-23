@@ -156,6 +156,32 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     });
   }
 
+  void _recalculateCart(CartItem cartTemp, int? value) {
+    if (value != null) {
+      var item = _cartData.firstWhere((element) => cartTemp.id == element.id);
+      item.qty += value;
+      final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
+
+      _cartDataView
+        ..clear()
+        ..addAll(newCart);
+
+      _controller.clear();
+      setState(() {});
+    } else {
+      _cartData.removeWhere((element) => cartTemp.id == element.id);
+
+      final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
+
+      _cartDataView
+        ..clear()
+        ..addAll(newCart);
+
+      _controller.clear();
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -286,23 +312,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
   Widget _cart() {
     if (_cartDataView.isEmpty) return const SizedBox.shrink();
-
-    // // Split items by name + discount combination
-    // final List<CartItem> separatedItems = [];
-
-    // for (var item in _cartDataView) {
-    //   // If same item name and same discountApplied exists, combine qty
-    //   final existingIndex = separatedItems.indexWhere(
-    //     (e) => e.name == item.name && (e.discountApplied) == (item.discountApplied),
-    //   );
-
-    //   if (existingIndex != -1) {
-    //     separatedItems[existingIndex].qty += item.qty;
-    //   } else {
-    //     separatedItems.add(item);
-    //   }
-    // }
-
     return Container(
       constraints: const BoxConstraints(maxHeight: 400),
       padding: const EdgeInsets.all(12),
@@ -429,9 +438,55 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ...rows,
+          const Divider(),
+
+          // Control buttons for TOTAL qty (not per row)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Text("Total qty: ${item.qty}"), Text((item.qty * item.price).toRupiah())],
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    splashRadius: 22,
+                    onPressed: () {
+                      setState(() {
+                        _recalculateCart(item, -1);
+                      });
+                    },
+                  ),
+                  Text("${item.qty}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    splashRadius: 22,
+                    onPressed: () {
+                      setState(() {
+                        _recalculateCart(item, 1);
+                      });
+                    },
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    splashRadius: 20,
+                    onPressed: () {
+                      setState(() {
+                        _cartData.removeWhere((e) => e.id == item.id);
+                        _cartDataView.removeWhere((e) => e.id == item.id);
+                        _recalculateCart(item, null);
+                      });
+                    },
+                  ),
+                  Text(
+                    (item.qty * item.price).toRupiah(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),

@@ -16,7 +16,7 @@ class DiscountRule {
 
   final List<int>? weekDays;
   final List<String>? startTimes;
-  final int? durationInHour;
+  final int? durationInMinute;
   final int? date;
 
   final bool restricted;
@@ -34,7 +34,7 @@ class DiscountRule {
     this.maxAmount,
     this.weekDays,
     this.startTimes,
-    this.durationInHour,
+    this.durationInMinute = 30,
     this.date,
     this.restricted = false,
   });
@@ -66,9 +66,23 @@ class DiscountRule {
         final minute = parts.length > 1 ? int.parse(parts[1]) : 0;
 
         final start = TimeOfDay(hour: hour, minute: minute);
-        final endHour = (hour + (durationInHour ?? 1)) % 24;
-        final end = TimeOfDay(hour: endHour, minute: minute);
 
+        // ✅ Convert duration to minutes (default 60)
+        final totalMinutes = durationInMinute ?? 60;
+        final addedHours = totalMinutes ~/ 60;
+        final addedMinutes = totalMinutes % 60;
+
+        int endHour = (hour + addedHours) % 24;
+        int endMinute = (minute + addedMinutes) % 60;
+
+        // Handle minute overflow
+        if (minute + addedMinutes >= 60) {
+          endHour = (endHour + 1) % 24;
+        }
+
+        final end = TimeOfDay(hour: endHour, minute: endMinute);
+
+        // Check if crosses midnight
         bool crossesMidnight = end.hour < start.hour || (end.hour == start.hour && end.minute < start.minute);
         bool inRange = false;
 
@@ -153,7 +167,6 @@ class DiscountRule {
         buyQty: 1,
         getQty: 1,
         startTimes: ["12:30"],
-        durationInHour: 1,
         maxQty: 5,
         restricted: true,
       ),
@@ -172,7 +185,6 @@ class DiscountRule {
         discountAmount: 50000,
 
         startTimes: ["13:30", "20:30"],
-        durationInHour: 1,
         buyQty: 5,
         maxQty: 2,
       ),
