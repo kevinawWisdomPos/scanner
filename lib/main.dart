@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:scanner/hardware_text_field.dart';
+import 'package:scanner/scanner_page.dart';
 
 void main() {
   runApp(const MainApp());

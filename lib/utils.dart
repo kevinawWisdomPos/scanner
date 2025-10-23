@@ -1,104 +1,159 @@
+import 'package:scanner/models/cart.dart';
 import 'package:scanner/models/discount.dart';
+import 'package:scanner/models/discount_cart.dart';
 
-List<Map<String, dynamic>> recalculateDiscounts(List<Map<String, dynamic>> cartData, List<DiscountRule> rules) {
-  final updatedCart = List<Map<String, dynamic>>.from(cartData);
-  final now = DateTime.now();
-
-  // Reset all discounts first
-  for (var item in updatedCart) {
-    item['discountApplied'] = 0.0;
-    item['discountQty'] = 0; // new field
-  }
-
+List<CartItem> recalculateDiscounts(
+  List<CartItem> cartData,
+  List<DiscountRule> rules,
+  List<DiscountItemLink> discountItemLinks,
+) {
   final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
+  final updatedCart = cartData.map((e) => e.copy()).toList();
 
-  for (var rule in rules) {
-    // -------------------------
-    // CHECK ACTIVE PERIOD
-    // -------------------------
-    final isAlwaysActive = rule.startDate == null && rule.endDate == null;
-    final isActive =
-        isAlwaysActive ||
-        (rule.startDate != null && rule.endDate != null && now.isAfter(rule.startDate!) && now.isBefore(rule.endDate!));
+  for (var item in updatedCart) {
+    final applicableLinks = discountItemLinks.where((link) => link.itemId == item.id).toList();
+    if (applicableLinks.isEmpty) continue;
 
-    if (!isActive) continue;
+    final applicableRules = applicableLinks
+        .map(
+          (link) => rules.firstWhere(
+            (rule) => rule.id == link.discountId && rule.autoApply,
+            orElse: () => throw Exception("Rule not found for discountId ${link.discountId}"),
+          ),
+        )
+        .toList();
 
-    final ruleType = rule.type;
-    final itemId = rule.itemId;
-    final targetItemId = rule.targetItemId;
-    final buyQty = rule.buyQty;
-    final getQty = rule.getQty ?? 0;
-    final discountPercent = (rule.discountPercent) / 100.0;
-    final discountAmount = (rule.discountAmount).toDouble();
-    final maxUse = rule.maxUse;
+    for (var i = 0; i < applicableRules.length; i++) {
+      final rule = applicableRules[i];
+      final link = applicableLinks[i];
+      final buyQty = rule.buyQty ?? 0;
+      final getQty = rule.getQty ?? 0;
+      final discountPercent = (rule.discountPercent ?? 0) / 100;
+      final discountAmount = rule.discountAmount ?? 0;
+      final targetItemId = link.targetItemId ?? item.id;
+      final targetItem = link.targetItemId == item.id
+          ? item
+          : updatedCart.firstWhere((c) => c.id == targetItemId, orElse: () => CartItem(id: -1, name: '', price: 0));
+      if (targetItem.id == -1) continue;
 
-    final sourceItem = updatedCart.firstWhere((i) => i['id'] == itemId, orElse: () => {});
-    if (sourceItem.isEmpty) continue;
+      double discountValue = 0.0;
+      int discountedQty = 0;
 
-    final targetItem = updatedCart.firstWhere((i) => i['id'] == (targetItemId ?? itemId), orElse: () => {});
-    if (targetItem.isEmpty) continue;
+      int itemQty = 0;
+      double itemPrice = 1;
 
-    double discountValue = 0.0;
-    int discountedQty = 0;
+      /// "PERCENT":
+      /// buy minimum quantity pcs get discountPercent
+      /// buy 5 pcs disc 10%
+      /// "UP TO": set discount rule maxAmount to specific amount
+      /// buy 2 pcs disc 40% up to 20000:
+      ///   set buyQty 2 - discountPercent 40 - maxAmount - 20000
+      if (rule.type == DiscountType.percent) {
+        if (targetItem.id == item.id) {
+          itemQty = item.qty;
+          itemPrice = item.price;
+        } else {
+          itemQty = targetItem.qty;
+          itemPrice = targetItem.price;
+        }
 
-    // -------------------------
-    // APPLY RULE TYPES
-    // -------------------------
-    if (ruleType == 'BOGO') {
-      var eligibleSets = sourceItem['qty'] ~/ (buyQty + getQty);
-      if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
-
-      final freeCount = eligibleSets * getQty;
-      discountedQty = freeCount;
-      discountValue = freeCount * targetItem['price'] * discountPercent;
-    } else if (ruleType == 'CROSS_BOGO' || ruleType == 'CROSS_DISCOUNT') {
-      if (sourceItem['qty'] >= buyQty && targetItem['qty'] > 0) {
-        var eligibleQty = (sourceItem['qty'] ~/ buyQty) * getQty;
-        if (maxUse != null && eligibleQty > maxUse) eligibleQty = maxUse;
-
-        final affectedQty = eligibleQty > targetItem['qty'] ? targetItem['qty'] : eligibleQty;
-        discountedQty = affectedQty;
-        discountValue = affectedQty * targetItem['price'] * discountPercent;
+        if (itemQty >= buyQty && buyQty > 0) {
+          var eligibleSets = itemQty;
+          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
+            eligibleSets = rule.maxQty!;
+          }
+          discountedQty = eligibleSets;
+          discountValue = discountedQty * itemPrice * discountPercent;
+        }
       }
-    } else if (ruleType == 'VOLUME') {
-      final qty = sourceItem['qty'];
-      if (qty >= buyQty) {
-        var eligibleSets = qty ~/ buyQty;
-        if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
+      /// "VOLUME":
+      /// buy specific quantity get discountPercent
+      /// buy 5 pcs discount 10%
+      /// buy 8 pcs:
+      ///   5 pcs discount 10%
+      ///   3 pcs normal price
+      else if (rule.type == DiscountType.volume) {
+        if (targetItem.id == item.id) {
+          itemQty = item.qty;
+          itemPrice = item.price;
+        } else {
+          itemQty = targetItem.qty;
+          itemPrice = targetItem.price;
+        }
 
-        final discountedQtyCalc = eligibleSets * buyQty;
-        discountedQty = discountedQtyCalc;
-        discountValue = discountedQtyCalc * sourceItem['price'] * discountPercent;
+        if (itemQty >= buyQty) {
+          var eligibleSets = itemQty ~/ buyQty;
+          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
+            eligibleSets = rule.maxQty!;
+          }
+
+          discountedQty = eligibleSets * buyQty;
+          discountValue = discountedQty * itemPrice * discountPercent;
+        }
       }
-    } else if (ruleType == 'AMOUNT') {
-      final qty = sourceItem['qty'];
-      var eligibleSets = qty ~/ buyQty;
-      if (maxUse != null && eligibleSets > maxUse) eligibleSets = maxUse;
+      /// "BOGO":
+      /// buy specific quantity get specific discountPercent
+      /// buy 2 pcs get 1 pcs discount 50%
+      /// buy 1 pcs get 1 pcs discount 100% -> buy 1 get 1
+      else if (rule.type == DiscountType.bogo) {
+        if (targetItemId == item.id) {
+          var eligibleSets = item.qty ~/ (buyQty + getQty);
+          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
+            eligibleSets = rule.maxQty!;
+          }
 
-      discountedQty = eligibleSets * buyQty;
-      discountValue = eligibleSets * discountAmount;
+          final freeCount = eligibleSets * getQty;
+          discountedQty = freeCount;
+          discountValue = freeCount * targetItem.price * discountPercent;
+        } else {
+          if (item.qty >= buyQty) {
+            var eligibleQty = (item.qty ~/ buyQty) * getQty;
+            if (rule.maxQty != null && eligibleQty > rule.maxQty!) {
+              eligibleQty = rule.maxQty!;
+            }
+
+            final affectedQty = eligibleQty > targetItem.qty ? targetItem.qty : eligibleQty;
+            discountedQty = affectedQty;
+            discountValue = affectedQty * targetItem.price * discountPercent;
+          }
+        }
+      }
+      /// "AMOUNT":
+      /// buy specific quantity get specific discountAmount
+      /// each buy 2 pcs get 20.000
+      else if (rule.type == DiscountType.amount) {
+        var eligibleSets = item.qty ~/ buyQty;
+        if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
+          eligibleSets = rule.maxQty!;
+        }
+        discountedQty = eligibleSets * buyQty;
+        discountValue = eligibleSets * discountAmount;
+      }
+
+      if (discountValue <= 0 || discountedQty <= 0) continue;
+
+      if (rule.maxAmount != null && discountValue > rule.maxAmount!) {
+        discountValue = rule.maxAmount!;
+      }
+
+      discountCandidatesBySource.putIfAbsent(item.id, () => []);
+      discountCandidatesBySource[item.id]!.add(_DiscountCandidate(targetItemId, discountValue, discountedQty));
     }
-
-    if (discountValue <= 0 || discountedQty <= 0) continue;
-
-    discountCandidatesBySource.putIfAbsent(itemId, () => []);
-    discountCandidatesBySource[itemId]!.add(
-      _DiscountCandidate(targetItemId ?? itemId, discountValue, discountedQty, isolated: rule.isolated),
-    );
   }
 
-  // -------------------------
-  // APPLY BIGGEST DISCOUNT
-  // -------------------------
+  // -------- APPLY BIGGEST DISCOUNT --------
   for (var sourceId in discountCandidatesBySource.keys) {
     final candidates = discountCandidatesBySource[sourceId]!;
     final biggest = candidates.reduce((a, b) => a.value > b.value ? a : b);
 
-    final targetItem = updatedCart.firstWhere((i) => i['id'] == biggest.targetId, orElse: () => {});
-    if (targetItem.isNotEmpty) {
-      targetItem['discountApplied'] = biggest.value;
-      targetItem['discountQty'] = biggest.discountQty;
-      targetItem['isolated'] = biggest.isolated;
+    final target = updatedCart.firstWhere(
+      (c) => c.id == biggest.targetId,
+      orElse: () => CartItem(id: -1, name: '', price: 0),
+    );
+
+    if (target.id != -1) {
+      target.discountApplied = biggest.value;
+      target.qtyDiscounted = biggest.discountQty;
     }
   }
 
@@ -109,7 +164,6 @@ class _DiscountCandidate {
   final int targetId;
   final double value;
   final int discountQty;
-  final bool isolated;
 
-  _DiscountCandidate(this.targetId, this.value, this.discountQty, {this.isolated = false});
+  _DiscountCandidate(this.targetId, this.value, this.discountQty);
 }

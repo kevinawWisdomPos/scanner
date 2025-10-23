@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:scanner/data.dart';
+import 'package:scanner/models/cart.dart';
 import 'package:scanner/models/discount.dart';
+import 'package:scanner/models/discount_cart.dart';
 import 'package:scanner/utils.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -22,7 +24,8 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _dummyData = [];
-  final List<Map<String, dynamic>> _cartData = [];
+  final List<CartItem> _cartData = [];
+  final List<CartItem> _cartDataView = [];
   final List<Map<String, dynamic>> _shownData = [];
 
   bool _visible = false;
@@ -52,23 +55,17 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     final scannedData = _dummyData.firstWhere((e) => e["barcode"] == value, orElse: () => {});
     if (scannedData.isEmpty) return;
 
-    final existingIndex = _cartData.indexWhere((item) => item['id'] == scannedData['id']);
+    final existingIndex = _cartData.indexWhere((item) => item.id == scannedData['id']);
     if (existingIndex != -1) {
-      _cartData[existingIndex]['qty'] += 1;
+      _cartData[existingIndex].qty += 1;
     } else {
-      _cartData.add({
-        'name': scannedData["name"],
-        'id': scannedData["id"],
-        'price': scannedData["price"],
-        'qty': 1,
-        'discountApplied': 0.0,
-      });
+      _cartData.add(CartItem(id: scannedData["id"], name: scannedData["name"], price: scannedData["price"]));
     }
 
     // Recalculate discounts after every scan
-    final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules);
+    final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
 
-    _cartData
+    _cartDataView
       ..clear()
       ..addAll(newCart);
 
@@ -248,7 +245,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("No. $index"),
+                              Text("No. ${item["id"]}"),
                               const SizedBox(height: 6),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -287,21 +284,21 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   Widget _cart() {
-    if (_cartData.isEmpty) return const SizedBox.shrink();
+    if (_cartDataView.isEmpty) return const SizedBox.shrink();
 
     // Split items by name + discount combination
-    final List<Map<String, dynamic>> separatedItems = [];
+    final List<CartItem> separatedItems = [];
 
-    for (var item in _cartData) {
+    for (var item in _cartDataView) {
       // If same item name and same discountApplied exists, combine qty
       final existingIndex = separatedItems.indexWhere(
-        (e) => e['name'] == item['name'] && (e['discountApplied'] ?? 0) == (item['discountApplied'] ?? 0),
+        (e) => e.name == item.name && (e.discountApplied) == (item.discountApplied),
       );
 
       if (existingIndex != -1) {
-        separatedItems[existingIndex]['qty'] += item['qty'];
+        separatedItems[existingIndex].qty += item.qty;
       } else {
-        separatedItems.add(Map<String, dynamic>.from(item));
+        separatedItems.add(item);
       }
     }
 
@@ -332,15 +329,15 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     );
   }
 
-  Widget _cartCard(List<Map<String, dynamic>> separatedItems, int index) {
+  Widget _cartCard(List<CartItem> separatedItems, int index) {
     final item = separatedItems[index];
-    final hasDiscount = (item['discountApplied'] ?? 0) > 0;
-    final discountQty = (item['discountQty'] ?? 0);
-    final price = (item['price'] ?? 0).toDouble();
-    final qty = (item['qty'] ?? 0).toInt();
-    final discount = (item['discountApplied'] ?? 0).toDouble();
+    final hasDiscount = (item.discountApplied) > 0;
+    final discountQty = (item.qtyDiscounted);
+    final price = (item.price).toDouble();
+    final qty = (item.qty).toInt();
+    final discount = (item.discountApplied).toDouble();
     final total = (price * qty) - discount;
-    final isIsolated = item['isolated'] ?? false;
+    // final isIsolated = item['isolated'] ?? false;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -359,7 +356,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                 Row(
                   children: [
                     Text(
-                      item['name'] ?? '',
+                      item.name,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: hasDiscount ? Colors.green.shade800 : Colors.black87,
@@ -399,9 +396,9 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                     ],
                   ),
 
-                  if (item['discountInput'] != null)
+                  if (item.discountApplied <= 0)
                     Text(
-                      "Disc input: ${item['discountInput'].toStringAsFixed(2)}",
+                      "Disc input: ${item.discountApplied.toStringAsFixed(2)}",
                       style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w500),
                     ),
 
@@ -419,21 +416,19 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               ],
             ),
           ),
-          Visibility(
-            visible: !isIsolated,
-            child: IconButton(
-              icon: const Icon(Icons.more_vert, color: Colors.grey),
-              onPressed: () async {
-                await _showManualDiscountDialog(item);
-                log("message item['discountInput'] : ${item['discountInput']}");
-              },
-            ),
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: Colors.grey),
+            onPressed: () async {
+              // await _showManualDiscountDialog(item);
+              log("message item['discountInput'] : ${item.discountApplied}");
+            },
           ),
         ],
       ),
     );
   }
 
+  // ignore: unused_element
   Future<void> _showManualDiscountDialog(Map<String, dynamic> item) async {
     final controller = TextEditingController();
 
@@ -451,8 +446,8 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           ElevatedButton(
             onPressed: () {
               final value = double.tryParse(controller.text) ?? 0.0;
-              var savedItem = _cartData.firstWhere((element) => item["id"] == element["id"]);
-              savedItem['discountInput'] = value;
+              var savedItem = _cartDataView.firstWhere((element) => item["id"] == element.id);
+              savedItem.discountApplied = value;
               setState(() {});
               Navigator.pop(context);
             },
