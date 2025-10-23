@@ -10,22 +10,33 @@ List<CartItem> recalculateDiscounts(
   final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
   final updatedCart = cartData.map((e) => e.copy()).toList();
 
+  // final now = DateTime.now();
+  // final now = DateTime(2025, 10, 23, 06, 30); // 06:30 hari ini // rule 1
+  // final now = DateTime(2025, 10, 23, 22, 00); // 14:00 hari ini // rule 2
+  // final now = DateTime(2025, 10, 23, 21, 00); // 21:00 hari ini // rule 2
+  // final now = DateTime(2025, 10, 24, 14, 00); // 14:30 tanggal 24 // rule 3
+  final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
+
   for (var item in updatedCart) {
     final applicableLinks = discountItemLinks.where((link) => link.itemId == item.id).toList();
     if (applicableLinks.isEmpty) continue;
 
     final applicableRules = applicableLinks
-        .map(
-          (link) => rules.firstWhere(
-            (rule) => rule.id == link.discountId && rule.autoApply,
-            orElse: () => throw Exception("Rule not found for discountId ${link.discountId}"),
-          ),
-        )
+        .map((link) {
+          try {
+            return rules.firstWhere((rule) => rule.id == link.discountId && rule.autoApply);
+          } catch (e) {
+            return null;
+          }
+        })
+        .whereType<DiscountRule>()
         .toList();
 
     for (var i = 0; i < applicableRules.length; i++) {
       final rule = applicableRules[i];
       final link = applicableLinks[i];
+      if (!rule.isActiveNow(now)) continue;
+
       final buyQty = rule.buyQty ?? 0;
       final getQty = rule.getQty ?? 0;
       final discountPercent = (rule.discountPercent ?? 0) / 100;
@@ -137,7 +148,9 @@ List<CartItem> recalculateDiscounts(
       }
 
       discountCandidatesBySource.putIfAbsent(item.id, () => []);
-      discountCandidatesBySource[item.id]!.add(_DiscountCandidate(targetItemId, discountValue, discountedQty));
+      discountCandidatesBySource[item.id]!.add(
+        _DiscountCandidate(targetItemId, discountValue, discountedQty, rule.name),
+      );
     }
   }
 
@@ -154,6 +167,7 @@ List<CartItem> recalculateDiscounts(
     if (target.id != -1) {
       target.discountApplied = biggest.value;
       target.qtyDiscounted = biggest.discountQty;
+      target.discName = biggest.discName;
     }
   }
 
@@ -164,6 +178,7 @@ class _DiscountCandidate {
   final int targetId;
   final double value;
   final int discountQty;
+  final String discName;
 
-  _DiscountCandidate(this.targetId, this.value, this.discountQty);
+  _DiscountCandidate(this.targetId, this.value, this.discountQty, this.discName);
 }
