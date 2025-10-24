@@ -1,21 +1,28 @@
+import 'dart:developer';
+
 import 'package:scanner/models/cart.dart';
 import 'package:scanner/models/discount.dart';
 import 'package:scanner/models/discount_cart.dart';
+import 'package:scanner/models/discount_usage.dart';
 
 List<CartItem> recalculateDiscounts(
   List<CartItem> cartData,
   List<DiscountRule> rules,
   List<DiscountItemLink> discountItemLinks,
+  List<DiscountUsage> discountUsages,
+  DateTime scannedTime,
 ) {
   final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
   final updatedCart = cartData.map((e) => e.copy()).toList();
 
   // final now = DateTime.now();
-  // final now = DateTime(2025, 10, 23, 06, 30); // 06:30 hari ini // rule 1
-  // final now = DateTime(2025, 10, 23, 22, 00); // 14:00 hari ini // rule 2
-  // final now = DateTime(2025, 10, 23, 21, 00); // 21:00 hari ini // rule 2
-  // final now = DateTime(2025, 10, 24, 14, 00); // 14:30 tanggal 24 // rule 3
-  final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
+  // final now = DateTime(2025, 10, 24, 06, 30); // 06:30 hari ini // rule 1
+  // final now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
+  // final now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
+  final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
+  // final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
+
+  // final now = scannedTime;
 
   for (var item in updatedCart) {
     final applicableLinks = discountItemLinks.where((link) => link.itemId == item.id).toList();
@@ -47,11 +54,28 @@ List<CartItem> recalculateDiscounts(
           : updatedCart.firstWhere((c) => c.id == targetItemId, orElse: () => CartItem(id: -1, name: '', price: 0));
       if (targetItem.id == -1) continue;
 
+      // 🔹 Check discount usage limit
+      log("usage.totalApplied : ${rule.id} - ${item.id}");
+      final usage = discountUsages.firstWhere(
+        (u) => u.ruleId == rule.id && u.itemId == item.id,
+        orElse: () => DiscountUsage(
+          id: -1,
+          ruleId: rule.id,
+          itemId: item.id,
+          date: now,
+          totalApplied: 0,
+          startDate: null,
+          limitValue: null,
+        ),
+      );
+
       double discountValue = 0.0;
       int discountedQty = 0;
 
       int itemQty = 0;
       double itemPrice = 1;
+
+      int eligibleQty = 0;
 
       /// "PERCENT":
       /// buy minimum quantity pcs get discountPercent
@@ -69,11 +93,9 @@ List<CartItem> recalculateDiscounts(
         }
 
         if (itemQty >= buyQty && buyQty > 0) {
-          var eligibleSets = itemQty;
-          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
-            eligibleSets = rule.maxQty!;
-          }
-          discountedQty = eligibleSets;
+          eligibleQty = itemQty;
+          eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+          discountedQty = eligibleQty;
           discountValue = discountedQty * itemPrice * discountPercent;
         }
       }
@@ -93,12 +115,10 @@ List<CartItem> recalculateDiscounts(
         }
 
         if (itemQty >= buyQty) {
-          var eligibleSets = itemQty ~/ buyQty;
-          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
-            eligibleSets = rule.maxQty!;
-          }
+          eligibleQty = itemQty ~/ buyQty;
+          eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
 
-          discountedQty = eligibleSets * buyQty;
+          discountedQty = eligibleQty * buyQty;
           discountValue = discountedQty * itemPrice * discountPercent;
         }
       }
@@ -108,20 +128,16 @@ List<CartItem> recalculateDiscounts(
       /// buy 1 pcs get 1 pcs discount 100% -> buy 1 get 1
       else if (rule.type == DiscountType.bogo) {
         if (targetItemId == item.id) {
-          var eligibleSets = item.qty ~/ (buyQty + getQty);
-          if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
-            eligibleSets = rule.maxQty!;
-          }
+          eligibleQty = item.qty ~/ (buyQty + getQty);
+          eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
 
-          final freeCount = eligibleSets * getQty;
+          final freeCount = eligibleQty * getQty;
           discountedQty = freeCount;
           discountValue = freeCount * targetItem.price * discountPercent;
         } else {
           if (item.qty >= buyQty) {
-            var eligibleQty = (item.qty ~/ buyQty) * getQty;
-            if (rule.maxQty != null && eligibleQty > rule.maxQty!) {
-              eligibleQty = rule.maxQty!;
-            }
+            eligibleQty = (item.qty ~/ buyQty) * getQty;
+            eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
 
             final affectedQty = eligibleQty > targetItem.qty ? targetItem.qty : eligibleQty;
             discountedQty = affectedQty;
@@ -133,14 +149,13 @@ List<CartItem> recalculateDiscounts(
       /// buy specific quantity get specific discountAmount
       /// each buy 2 pcs get 20.000
       else if (rule.type == DiscountType.amount) {
-        var eligibleSets = item.qty ~/ buyQty;
-        if (rule.maxQty != null && eligibleSets > rule.maxQty!) {
-          eligibleSets = rule.maxQty!;
-        }
-        discountedQty = eligibleSets * buyQty;
-        discountValue = eligibleSets * discountAmount;
+        eligibleQty = item.qty ~/ buyQty;
+        eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+        discountedQty = eligibleQty * buyQty;
+        discountValue = eligibleQty * discountAmount;
       }
 
+      /// ================================================================
       if (discountValue <= 0 || discountedQty <= 0) continue;
 
       if (rule.maxAmount != null && discountValue > rule.maxAmount!) {
@@ -149,7 +164,7 @@ List<CartItem> recalculateDiscounts(
 
       discountCandidatesBySource.putIfAbsent(item.id, () => []);
       discountCandidatesBySource[item.id]!.add(
-        _DiscountCandidate(targetItemId, discountValue, discountedQty, rule.name),
+        _DiscountCandidate(targetItemId, discountValue, discountedQty, rule.name, rule.id),
       );
     }
   }
@@ -168,6 +183,7 @@ List<CartItem> recalculateDiscounts(
       target.discountApplied = biggest.value;
       target.qtyDiscounted = biggest.discountQty;
       target.discName = biggest.discName;
+      target.autoDiscountId = biggest.discId;
     }
   }
 
@@ -179,6 +195,23 @@ class _DiscountCandidate {
   final double value;
   final int discountQty;
   final String discName;
+  final int discId;
 
-  _DiscountCandidate(this.targetId, this.value, this.discountQty, this.discName);
+  _DiscountCandidate(this.targetId, this.value, this.discountQty, this.discName, this.discId);
+}
+
+int recalculateEligibleQty(int eligible, int usage, int? max) {
+  if (max == null) {
+    return eligible;
+  }
+  if (eligible > max) {
+    if ((eligible + usage) > max) {
+      eligible = max - usage;
+    } else {
+      eligible = max;
+    }
+  } else if ((eligible + usage) > max) {
+    eligible = max - usage;
+  }
+  return eligible;
 }

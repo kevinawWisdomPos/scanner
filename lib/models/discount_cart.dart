@@ -25,6 +25,7 @@ class DiscountItemLink {
       // DiscountItemLink(discountId: 301, itemId: 40003),
       // DiscountItemLink(discountId: 302, itemId: 40003),
       // DiscountItemLink(discountId: 303, itemId: 40003, targetItemId: 40004),
+      DiscountItemLink(discountId: 401, itemId: 40005),
     ];
   }
 }

@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   flutter_barcode_listener: ^0.1.4
   intl: ^0.20.2
+  path: ^1.9.1
+  sqflite: ^2.4.2
   visibility_detector: ^0.4.0+2
 
 dev_dependencies:

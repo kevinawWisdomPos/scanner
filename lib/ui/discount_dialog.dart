@@ -102,7 +102,7 @@ Widget _discountRuleCard(BuildContext context, DiscountRule rule) {
           // Left icon / emoji
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: badgeColor.withOpacity(0.15), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), shape: BoxShape.circle),
             child: Icon(rule.restricted ? Icons.lock_outline : Icons.discount_outlined, color: badgeColor, size: 22),
           ),
           const SizedBox(width: 12),

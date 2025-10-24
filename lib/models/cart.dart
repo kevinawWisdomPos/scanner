@@ -2,14 +2,17 @@ class CartItem {
   final int id;
   final String name;
   final double price;
-  String? discName;
   int qty;
+
+  // auto discount
+  String? discName;
+  int? autoDiscountId;
   double discountApplied;
   int qtyDiscounted;
   bool isRestricted;
 
   // manual discount
-  int? mountedDiscountId;
+  int? manualDiscountId;
   double? manualDiscount;
 
   CartItem({
@@ -20,7 +23,8 @@ class CartItem {
     this.discountApplied = 0.0,
     this.qtyDiscounted = 0,
     this.isRestricted = false,
-    this.mountedDiscountId,
+    this.autoDiscountId,
+    this.manualDiscountId,
     this.manualDiscount,
     this.discName,
   });
@@ -45,7 +49,7 @@ class CartItem {
       discountApplied: discountApplied ?? this.discountApplied,
       qtyDiscounted: qtyDiscounted ?? this.qtyDiscounted,
       isRestricted: isRestricted ?? this.isRestricted,
-      mountedDiscountId: mountedDiscountId ?? this.mountedDiscountId,
+      manualDiscountId: mountedDiscountId ?? manualDiscountId,
       manualDiscount: manualDiscount ?? this.manualDiscount,
       discName: discName ?? this.discName,
     );

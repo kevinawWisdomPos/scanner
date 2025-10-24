@@ -1,15 +1,20 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
-import 'package:scanner/data.dart';
-import 'package:scanner/discount_dialog.dart';
 import 'package:scanner/models/cart.dart';
 import 'package:scanner/models/discount.dart';
 import 'package:scanner/models/discount_cart.dart';
-import 'package:scanner/utils.dart';
+import 'package:scanner/models/discount_usage.dart';
+import 'package:scanner/repo/data.dart';
+import 'package:scanner/repo/discount_repo.dart';
+import 'package:scanner/ui/discount_dialog.dart';
+import 'package:scanner/ui/history_list.dart';
+import 'package:scanner/utils/db_helper.dart';
 import 'package:scanner/utils/torupiah.dart';
+import 'package:scanner/utils/utils.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class HardwareScannerPage extends StatefulWidget {
@@ -25,9 +30,15 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _dummyData = [];
+  final List<DiscountRule> _discountRules = [];
+  final List<DiscountItemLink> _discountItemLink = [];
+  final List<DiscountUsage> _discountUsage = [];
+
   final List<CartItem> _cartData = [];
   final List<CartItem> _cartDataView = [];
   final List<Map<String, dynamic>> _shownData = [];
+
+  DateTime scannedTime = DateTime.now();
 
   bool _visible = false;
   bool _isLoadingMore = false;
@@ -43,16 +54,32 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   void initState() {
     super.initState();
     _dummyData.addAll(Data().generate());
+    _discountRules.addAll(DiscountRule.discountRules());
+    _discountItemLink.addAll(DiscountItemLink.getDummy());
+
     _loadNextBatch();
 
+    scannedTime = DateTime(2025, 10, 27);
     _focusNode.addListener(() {
       if (!_focusNode.hasFocus) {
         Future.delayed(const Duration(milliseconds: 100), _focusNode.requestFocus);
       }
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await loadDiscountUsage();
+    });
+  }
+
+  Future<void> loadDiscountUsage() async {
+    final db = await DBHelper.database;
+    _discountUsage.clear();
+    final usages = await DiscountRepo.getFilteredDiscountUsages(db, _discountRules, scannedTime);
+    _discountUsage.addAll(usages);
   }
 
   void _onSubmitted(String value) {
+    updateScanTime();
     final scannedData = _dummyData.firstWhere((e) => e["barcode"] == value, orElse: () => {});
     if (scannedData.isEmpty) return;
 
@@ -63,8 +90,11 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
       _cartData.add(CartItem(id: scannedData["id"], name: scannedData["name"], price: scannedData["price"]));
     }
 
-    // Recalculate discounts after every scan
-    final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
+    recalibratingListVIew();
+  }
+
+  void recalibratingListVIew() {
+    final newCart = recalculateDiscounts(_cartData, _discountRules, _discountItemLink, _discountUsage, scannedTime);
 
     _cartDataView
       ..clear()
@@ -72,6 +102,12 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
     _controller.clear();
     setState(() {});
+  }
+
+  void updateScanTime() {
+    if (_cartData.isEmpty) {
+      scannedTime = DateTime.now();
+    }
   }
 
   Future<void> _loadNextBatch() async {
@@ -157,28 +193,102 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   void _recalculateCart(CartItem cartTemp, int? value) {
-    if (value != null) {
+    if (value != null && value != 0) {
       var item = _cartData.firstWhere((element) => cartTemp.id == element.id);
       item.qty += value;
-      final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
-
-      _cartDataView
-        ..clear()
-        ..addAll(newCart);
-
-      _controller.clear();
-      setState(() {});
+      if (item.qty <= 0) {
+        _cartData.removeWhere((element) => cartTemp.id == element.id);
+      }
     } else {
       _cartData.removeWhere((element) => cartTemp.id == element.id);
+    }
 
-      final newCart = recalculateDiscounts(_cartData, DiscountRule.discountRules(), DiscountItemLink.getDummy());
+    recalibratingListVIew();
+  }
 
-      _cartDataView
-        ..clear()
-        ..addAll(newCart);
+  Future<void> submitingHistory() async {
+    try {
+      log("LOADING");
+      final db = await DBHelper.database;
+      final batch = db.batch();
 
-      _controller.clear();
-      setState(() {});
+      final now = DateTime.now();
+      final nowIso = now.toIso8601String();
+
+      for (final item in _cartDataView) {
+        // Save purchase history
+        batch.insert('purchase_history', {'itemId': item.id, 'itemName': item.name, 'qty': item.qty, 'date': nowIso});
+
+        // Save discount usage if applicable
+        if (item.autoDiscountId != null && item.discountApplied > 0) {
+          // you can safely use nowIso for date; scannedTime may vary
+          final discountRule = _discountRules.firstWhere(
+            (rule) => rule.id == item.autoDiscountId,
+            orElse: () => DiscountRule(
+              id: item.autoDiscountId!,
+              name: '',
+              type: DiscountType.amount,
+              limitType: LimitType.transaction,
+            ),
+          );
+
+          // determine start_date and limit_value according to the rule
+          String? startDateIso;
+          int? limitValue = discountRule.limitValue;
+
+          switch (discountRule.limitType) {
+            case LimitType.daily:
+              startDateIso = DateTime(now.year, now.month, now.day).toIso8601String();
+              break;
+            case LimitType.weekly:
+              final monday = now.subtract(Duration(days: now.weekday - 1));
+              startDateIso = DateTime(monday.year, monday.month, monday.day).toIso8601String();
+              break;
+            case LimitType.monthly:
+              startDateIso = DateTime(now.year, now.month, 1).toIso8601String();
+              break;
+            case LimitType.days:
+              if (discountRule.startDate != null) {
+                startDateIso = discountRule.startDate!.toIso8601String();
+              }
+              break;
+            case LimitType.transaction:
+            default:
+              startDateIso = null;
+              limitValue = null;
+              break;
+          }
+
+          batch.insert('discount_usage', {
+            'ruleId': item.autoDiscountId,
+            'date': nowIso,
+            'totalApplied': item.qtyDiscounted,
+            'start_date': startDateIso,
+            'limit_value': limitValue,
+            'itemId': item.id,
+          });
+        }
+      }
+
+      await batch.commit(noResult: true);
+      await loadDiscountUsage();
+
+      setState(() {
+        _cartData.clear();
+        _cartDataView.clear();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('✅ Purchase history & discount saved successfully!')));
+      }
+
+      log("FINISHED");
+    } catch (e, st) {
+      log("❌ ERROR SUBMITTING HISTORY: $e\n$st");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('⚠️ Failed to save history: $e')));
+      }
     }
   }
 
@@ -204,6 +314,12 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               } else {
                 setState(() => _isSearching = true);
               }
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.list_alt),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute<void>(builder: (context) => const HistoryList()));
             },
           ),
           PopupMenuButton<String>(
@@ -236,71 +352,70 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               }
               return false;
             },
-            child: Column(
+            child: Stack(
               children: [
-                Expanded(
-                  child: ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _shownData.length + (_isLoadingMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index == _shownData.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        );
-                      }
-                      final item = _shownData[index];
-                      return GestureDetector(
-                        onTap: () {
-                          _onSubmitted(item["barcode"]);
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                blurRadius: 3,
-                                color: Colors.black.withValues(alpha: 0.08),
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("No. ${item["id"]}"),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(item["name"], overflow: TextOverflow.ellipsis),
-                                  Text(((item["price"] ?? 0) as num).toRupiah()),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("Sold: ${item["sold"]}"),
-                                  Text(item["stock"] != 0 ? "Available" : "Empty"),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [Icon(Icons.qr_code), SizedBox(width: 10), Text("${item["barcode"]}")],
-                              ),
-                            ],
-                          ),
-                        ),
+                ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _shownData.length + (_isLoadingMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _shownData.length) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       );
-                    },
-                  ),
+                    }
+                    final item = _shownData[index];
+                    return GestureDetector(
+                      onTap: () {
+                        _onSubmitted(item["barcode"]);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 3,
+                              color: Colors.black.withValues(alpha: 0.08),
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("No. ${item["id"]}"),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(item["name"], overflow: TextOverflow.ellipsis),
+                                Text(((item["price"] ?? 0) as num).toRupiah()),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text("Sold: ${item["sold"]}"),
+                                Text(item["stock"] != 0 ? "Available" : "Empty"),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [Icon(Icons.qr_code), SizedBox(width: 10), Text("${item["barcode"]}")],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
+
                 _cart(),
               ],
             ),
@@ -312,31 +427,46 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
   Widget _cart() {
     if (_cartDataView.isEmpty) return const SizedBox.shrink();
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 400),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), offset: const Offset(0, 2), blurRadius: 20)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("🛒 CART", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-
-          Expanded(
-            child: ListView.separated(
-              itemCount: _cartDataView.length,
-              separatorBuilder: (context, index) => Divider(height: 32, color: Colors.grey),
-              itemBuilder: (context, index) {
-                return _cartCard(_cartDataView[index]);
-              },
-            ),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.4,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -2))],
           ),
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("🛒 CART", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  FilledButton(
+                    onPressed: () async {
+                      await submitingHistory();
+                    },
+                    child: const Text("Checkout"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  itemCount: _cartDataView.length,
+                  separatorBuilder: (_, __) => const Divider(height: 32, color: Colors.grey),
+                  itemBuilder: (context, index) => _cartCard(_cartDataView[index]),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -392,7 +522,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
         final previousAutoDiscount = item.discountApplied - previousManualDiscount;
 
         // Remove only the old manual discount (keep auto)
-        if (item.mountedDiscountId != null && previousManualDiscount > 0) {
+        if (item.manualDiscountId != null && previousManualDiscount > 0) {
           item.discountApplied -= previousManualDiscount;
           if (item.discountApplied < 0) item.discountApplied = 0;
         }
@@ -402,7 +532,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
         // Update with manual rule
         item.isRestricted = manualRule.restricted;
-        item.mountedDiscountId = manualRule.id;
+        item.manualDiscountId = manualRule.id;
 
         final double itemSubtotal = item.price * item.qty;
         final double remainingTotal = itemSubtotal - previousAutoDiscount;

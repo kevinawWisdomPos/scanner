@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 enum DiscountType { percent, volume, bogo, amount, upto }
 
+enum LimitType { transaction, daily, weekly, monthly, days }
+
 class DiscountRule {
   final int id;
   final String name;
@@ -11,7 +13,6 @@ class DiscountRule {
   final int? buyQty;
   final int? getQty;
   final bool autoApply;
-  final int? maxQty;
   final double? maxAmount;
 
   final List<int>? weekDays;
@@ -19,6 +20,21 @@ class DiscountRule {
   final int? durationInMinute;
   final int? date;
 
+  // max timing
+  final int? maxQty;
+
+  /// if limitType = days && startDate != null
+  /// limit become duration
+  /// ex:
+  /// limit discount each 4 days start from 24 oct:
+  /// limitValue = 4
+  /// limitType = LImitType.days
+  /// startDate = "24-10-2025"
+  final DateTime? startDate;
+  final LimitType limitType;
+  final int? limitValue;
+
+  /// if true then cannot combine with manual discount
   final bool restricted;
 
   DiscountRule({
@@ -37,6 +53,9 @@ class DiscountRule {
     this.durationInMinute = 30,
     this.date,
     this.restricted = false,
+    this.startDate,
+    this.limitType = LimitType.transaction,
+    this.limitValue,
   });
 
   bool isActiveNow(DateTime now) {
@@ -180,11 +199,11 @@ class DiscountRule {
       ),
       DiscountRule(
         id: 202,
-        name: "beli per 5 fanta di hari ini jam 13:30 - 14:30 & 20:30 - 21:30 dapat diskon 50rb",
+        name: "beli per 5 fanta di hari ini jam 13:30 - 14:00 & 20:30 - 21:00 dapat diskon 50rb",
         type: DiscountType.amount,
         discountAmount: 50000,
-
         startTimes: ["13:30", "20:30"],
+        durationInMinute: 30,
         buyQty: 5,
         maxQty: 2,
       ),
@@ -193,7 +212,7 @@ class DiscountRule {
         name: "beli per 5 fanta di tanggal 24 dapat diskon 55rb",
         type: DiscountType.amount,
         discountAmount: 55000,
-        date: 24,
+        date: 25,
         buyQty: 5,
         maxQty: 2,
       ),
@@ -233,11 +252,15 @@ class DiscountRule {
       ),
       DiscountRule(
         id: 401,
-        name: "Buy 2 item get 7000",
-        type: DiscountType.amount,
-        discountAmount: 7000,
-        buyQty: 2,
-        maxQty: 12,
+        name: "Buy 5 bomb free 1 bomb, limit 10 each week, start on friday, 24 Oct",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 5,
+        getQty: 1,
+        maxQty: 5,
+        startDate: DateTime(2025, 10, 24),
+        limitType: LimitType.monthly,
+        limitValue: 2,
       ),
       DiscountRule(
         id: 501,
