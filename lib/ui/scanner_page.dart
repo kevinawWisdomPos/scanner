@@ -253,7 +253,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               }
               break;
             case LimitType.transaction:
-            default:
               startDateIso = null;
               limitValue = null;
               break;
@@ -437,7 +436,9 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -2))],
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, -2)),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
