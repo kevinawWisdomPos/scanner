@@ -39,6 +39,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   final List<Map<String, dynamic>> _shownData = [];
 
   DateTime scannedTime = DateTime.now();
+  DateTime now = DateTime.now();
 
   bool _visible = false;
   bool _isLoadingMore = false;
@@ -66,25 +67,25 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     });
 
     /// rule 1
-    scannedTime = DateTime(2025, 10, 27, 14, 00); // 06:30 hari ini // rule 1
-    // scannedTime = DateTime(2025, 10, 26);
-    // scannedTime = DateTime(2025, 10, 26); // belom reset
-    // scannedTime = DateTime(2025, 10, 27); // sudah reset
+    now = DateTime(2025, 10, 27, 14, 00); // 06:30 hari ini // rule 1
+    // now = DateTime(2025, 10, 26);
+    // now = DateTime(2025, 10, 26); // belom reset
+    // now = DateTime(2025, 10, 27); // sudah reset
 
     /// rule 2
-    // scannedTime = DateTime(2025, 10, 24);
-    // scannedTime = DateTime(2025, 11, 1);
+    // now = DateTime(2025, 10, 24);
+    // now = DateTime(2025, 11, 1);
 
     /// rule 3
-    // scannedTime = DateTime(2025, 10, 20);
-    // scannedTime = DateTime(2025, 10, 21);
-    // scannedTime = DateTime(2025, 10, 22);
+    // now = DateTime(2025, 10, 20);
+    // now = DateTime(2025, 10, 21);
+    // now = DateTime(2025, 10, 22);
 
-    // final now = DateTime(2025, 10, 24, 14, 00); // 06:30 hari ini // rule 1
-    // final now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
-    // final now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
-    // final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
-    // final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
+    // now = DateTime(2025, 10, 24, 14, 00); // 06:30 hari ini // rule 1
+    // now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
+    // now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
+    // now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
+    // now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await loadDiscountUsage();
@@ -224,6 +225,46 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     }
 
     recalibratingListVIew();
+  }
+
+  Future<void> showDialog(CartItem item) async {
+    final manualRule = await showManualDiscountDialog(context);
+    if (manualRule == null) return;
+
+    final previousManualDiscount = item.manualDiscountAmount ?? 0.0;
+    double previousAutoDiscount = item.discountApplied - previousManualDiscount;
+
+    // Remove only the old manual discount (keep auto)
+    item.manualDiscountRule = manualRule;
+    if (item.isRestricted || manualRule.restricted) {
+      item.autoDiscountId = null;
+      item.discName = null;
+      item.discountApplied = 0;
+      item.manualDiscountAmount = null;
+      item.manualDiscountRule = null;
+      item.isRestricted = true;
+      previousAutoDiscount = 0;
+    }
+
+    final double itemSubtotal = item.price * item.qty;
+    final double remainingTotal = itemSubtotal - previousAutoDiscount;
+
+    double newManualDiscount = 0;
+
+    // Calculate new discount
+    if (manualRule.type == DiscountType.percent && manualRule.discountPercent != null) {
+      newManualDiscount = remainingTotal * (manualRule.discountPercent! / 100);
+    } else if (manualRule.type == DiscountType.amount && manualRule.discountAmount != null) {
+      newManualDiscount = manualRule.discountAmount!;
+      // for fixed amount, limit it to remaining total (never over-discount)
+      if (newManualDiscount > remainingTotal) newManualDiscount = remainingTotal;
+    }
+
+    item.qtyDiscounted = item.qty;
+    item.manualDiscountAmount = newManualDiscount;
+    item.discountApplied = previousAutoDiscount + newManualDiscount;
+
+    setState(() {});
   }
 
   Future<void> submitingHistory() async {
@@ -485,7 +526,9 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   Widget _cartCard(CartItem item) {
     final price = item.price.toDouble();
     final discount = item.discountApplied.toDouble();
-    final hasDiscount = discount > 0 || (item.manualDiscount ?? 0) > 0;
+    final hasDiscount = discount > 0 || (item.manualDiscountAmount ?? 0) > 0;
+    log("discount : $discount");
+    log("hasDiscount : $hasDiscount");
 
     final discountQty = item.qtyDiscounted;
     final normalQty = item.qty - discountQty;
@@ -527,54 +570,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
     return GestureDetector(
       onTap: () async {
-        final manualRule = await showManualDiscountDialog(context);
-        if (manualRule == null) return;
-
-        final previousManualDiscount = item.manualDiscount ?? 0.0;
-        final previousAutoDiscount = item.discountApplied - previousManualDiscount;
-
-        // Remove only the old manual discount (keep auto)
-        if (item.manualDiscountId != null && previousManualDiscount > 0) {
-          item.discountApplied -= previousManualDiscount;
-          if (item.discountApplied < 0) item.discountApplied = 0;
-        }
-        if (item.isRestricted) {
-          item.discountApplied = 0;
-        }
-
-        // Update with manual rule
-        item.isRestricted = manualRule.restricted;
-        item.manualDiscountId = manualRule.id;
-
-        final double itemSubtotal = item.price * item.qty;
-        final double remainingTotal = itemSubtotal - previousAutoDiscount;
-
-        double newManualDiscount = 0;
-
-        // Calculate new discount
-        if (manualRule.type == DiscountType.percent && manualRule.discountPercent != null) {
-          newManualDiscount = remainingTotal * (manualRule.discountPercent! / 100);
-        } else if (manualRule.type == DiscountType.amount && manualRule.discountAmount != null) {
-          // for fixed amount, limit it to remaining total (never over-discount)
-          newManualDiscount = manualRule.discountAmount!;
-          if (newManualDiscount > remainingTotal) newManualDiscount = remainingTotal;
-        }
-
-        // Apply new discount
-        if (item.isRestricted) {
-          // Restricted → replace everything
-          item.discountApplied = newManualDiscount;
-          item.qtyDiscounted = item.qty;
-        } else {
-          // Non-restricted → add manual discount to remaining total
-          item.discountApplied = previousAutoDiscount + newManualDiscount;
-          item.qtyDiscounted = item.qty;
-        }
-
-        // Store manual discount
-        item.manualDiscount = newManualDiscount;
-
-        setState(() {});
+        showDialog(item);
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

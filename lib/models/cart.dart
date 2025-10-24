@@ -1,3 +1,5 @@
+import 'package:scanner/models/discount.dart';
+
 class CartItem {
   final int id;
   final String name;
@@ -13,8 +15,8 @@ class CartItem {
   int? targetItemId;
 
   // manual discount
-  int? manualDiscountId;
-  double? manualDiscount;
+  DiscountRule? manualDiscountRule;
+  double? manualDiscountAmount;
 
   CartItem({
     required this.id,
@@ -25,10 +27,10 @@ class CartItem {
     this.qtyDiscounted = 0,
     this.isRestricted = false,
     this.autoDiscountId,
-    this.manualDiscountId,
-    this.manualDiscount,
+    this.manualDiscountAmount,
     this.discName,
     this.targetItemId,
+    this.manualDiscountRule,
   });
 
   CartItem copy({
@@ -39,9 +41,11 @@ class CartItem {
     double? discountApplied,
     int? qtyDiscounted,
     bool? isRestricted,
-    int? mountedDiscountId,
+    int? manualDiscountId,
+    String? manualDiscName,
     double? manualDiscount,
     String? discName,
+    DiscountRule? manualDiscountRule,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -51,9 +55,9 @@ class CartItem {
       discountApplied: discountApplied ?? this.discountApplied,
       qtyDiscounted: qtyDiscounted ?? this.qtyDiscounted,
       isRestricted: isRestricted ?? this.isRestricted,
-      manualDiscountId: mountedDiscountId ?? manualDiscountId,
-      manualDiscount: manualDiscount ?? this.manualDiscount,
+      manualDiscountAmount: manualDiscount ?? manualDiscountAmount,
       discName: discName ?? this.discName,
+      manualDiscountRule: manualDiscountRule ?? this.manualDiscountRule,
     );
   }
 
@@ -75,13 +79,17 @@ class CartItem {
     final List<CartItem> result = [];
 
     for (final item in cart) {
-      final hasDiscount = (item.discountApplied > 0) || ((item.manualDiscount ?? 0) > 0);
+      final hasDiscount = (item.discountApplied > 0) || ((item.manualDiscountAmount ?? 0) > 0);
       final discountedQty = item.qtyDiscounted;
       final normalQty = item.qty - discountedQty;
 
       if (hasDiscount && discountedQty > 0 && normalQty > 0) {
         result.add(
-          item.copy(qty: discountedQty, discountApplied: item.discountApplied, manualDiscount: item.manualDiscount),
+          item.copy(
+            qty: discountedQty,
+            discountApplied: item.discountApplied,
+            manualDiscount: item.manualDiscountAmount,
+          ),
         );
         result.add(item.copy(qty: normalQty, discountApplied: 0, manualDiscount: 0, qtyDiscounted: 0));
       } else if (hasDiscount) {
