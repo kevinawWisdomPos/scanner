@@ -14,7 +14,7 @@ List<CartItem> recalculateDiscounts(
   final updatedCart = cartData.map((e) => e.copy()).toList();
 
   // final now = DateTime.now();
-  // final now = DateTime(2025, 10, 24, 06, 30); // 06:30 hari ini // rule 1
+  // final now = DateTime(2025, 10, 24, 14, 00); // 06:30 hari ini // rule 1
   // final now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
   // final now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
   // final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3

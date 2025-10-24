@@ -66,7 +66,8 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     });
 
     /// rule 1
-    scannedTime = DateTime(2025, 10, 26);
+    scannedTime = DateTime(2025, 10, 27, 14, 00); // 06:30 hari ini // rule 1
+    // scannedTime = DateTime(2025, 10, 26);
     // scannedTime = DateTime(2025, 10, 26); // belom reset
     // scannedTime = DateTime(2025, 10, 27); // sudah reset
 
@@ -78,6 +79,12 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     // scannedTime = DateTime(2025, 10, 20);
     // scannedTime = DateTime(2025, 10, 21);
     // scannedTime = DateTime(2025, 10, 22);
+
+    // final now = DateTime(2025, 10, 24, 14, 00); // 06:30 hari ini // rule 1
+    // final now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
+    // final now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
+    // final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
+    // final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await loadDiscountUsage();
@@ -225,8 +232,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
       final db = await DBHelper.database;
       final batch = db.batch();
 
-      final now = DateTime.now();
-      final nowIso = now.toIso8601String();
+      final nowIso = scannedTime.toIso8601String();
 
       for (final item in _cartDataView) {
         // Save purchase history
@@ -251,14 +257,14 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
           switch (discountRule.limitType) {
             case LimitType.daily:
-              startDateIso = DateTime(now.year, now.month, now.day).toIso8601String();
+              startDateIso = DateTime(scannedTime.year, scannedTime.month, scannedTime.day).toIso8601String();
               break;
             case LimitType.weekly:
-              final monday = now.subtract(Duration(days: now.weekday - 1));
+              final monday = scannedTime.subtract(Duration(days: scannedTime.weekday - 1));
               startDateIso = DateTime(monday.year, monday.month, monday.day).toIso8601String();
               break;
             case LimitType.monthly:
-              startDateIso = DateTime(now.year, now.month, 1).toIso8601String();
+              startDateIso = DateTime(scannedTime.year, scannedTime.month, 1).toIso8601String();
               break;
             case LimitType.days:
               if (discountRule.startDate != null) {
@@ -342,7 +348,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               const PopupMenuItem(value: 'none', child: Text('Default')),
               const PopupMenuItem(value: 'name', child: Text('Name')),
               const PopupMenuItem(value: 'price', child: Text('Price')),
-              const PopupMenuItem(value: 'sold', child: Text('Sold')),
               const PopupMenuItem(value: 'stock', child: Text('Stock')),
             ],
           ),
@@ -407,14 +412,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                               children: [
                                 Text(item["name"], overflow: TextOverflow.ellipsis),
                                 Text(((item["price"] ?? 0) as num).toRupiah()),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text("Sold: ${item["sold"]}"),
-                                Text(item["stock"] != 0 ? "Available" : "Empty"),
                               ],
                             ),
                             const SizedBox(height: 6),
