@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:scanner/ui/rule_usage.dart';
 import 'package:scanner/utils/db_helper.dart';
 
-class HistoryList extends StatefulWidget {
-  const HistoryList({super.key});
+class RuleUsage extends StatefulWidget {
+  const RuleUsage({super.key});
 
   @override
-  State<HistoryList> createState() => _HistoryListState();
+  State<RuleUsage> createState() => _RuleUsageState();
 }
 
-class _HistoryListState extends State<HistoryList> {
-  late Future<List<Map<String, dynamic>>> _historyFuture;
+class _RuleUsageState extends State<RuleUsage> {
+  late Future<List<Map<String, dynamic>>> _discountUsage;
   Future<void> deleteDb() async {
     await DBHelper.deleteDb();
   }
@@ -18,25 +17,19 @@ class _HistoryListState extends State<HistoryList> {
   @override
   void initState() {
     super.initState();
-    _historyFuture = DBHelper.getHistory();
+    _discountUsage = DBHelper.getDiscountUsage();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("History"),
+        title: Text("ROLE USAGE"),
         actions: [
           IconButton(
             icon: Icon(Icons.delete),
             onPressed: () async {
               await deleteDb();
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.list_alt),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute<void>(builder: (context) => const RuleUsage()));
             },
           ),
         ],
@@ -47,7 +40,7 @@ class _HistoryListState extends State<HistoryList> {
 
   Widget _body() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _historyFuture,
+      future: _discountUsage,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -63,7 +56,14 @@ class _HistoryListState extends State<HistoryList> {
             final item = history[index];
             return ListTile(
               title: Text(item['itemName'] ?? 'Unknown Item'),
-              subtitle: Text('Qty: ${item['qty']} | Date: ${item['date']}'),
+              subtitle: Text(
+                '| ruleId: ${item['ruleId']} \n'
+                '| itemId: ${item['itemId']} \n'
+                '| totalApplied: ${item['totalApplied']} \n'
+                '| amountApplied: ${item['amountApplied']} \n'
+                '| start_date: ${item['start_date']} \n'
+                '| limit_value: ${item['limit_value']}',
+              ),
             );
           },
         );

@@ -130,7 +130,7 @@ class Data {
         'brand': 'TestBrand',
         'condition': 'New',
         'color': 'Black',
-        'price': 10000.00,
+        'price': 14000.00,
         'stock': 10,
         'rating': 5.0,
         'discount': 0,

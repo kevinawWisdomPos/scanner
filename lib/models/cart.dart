@@ -10,6 +10,7 @@ class CartItem {
   double discountApplied;
   int qtyDiscounted;
   bool isRestricted;
+  int? targetItemId;
 
   // manual discount
   int? manualDiscountId;
@@ -27,6 +28,7 @@ class CartItem {
     this.manualDiscountId,
     this.manualDiscount,
     this.discName,
+    this.targetItemId,
   });
 
   CartItem copy({

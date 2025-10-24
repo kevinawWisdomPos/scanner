@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:scanner/models/cart.dart';
 import 'package:scanner/models/discount.dart';
 import 'package:scanner/models/discount_cart.dart';
@@ -19,10 +17,10 @@ List<CartItem> recalculateDiscounts(
   // final now = DateTime(2025, 10, 24, 06, 30); // 06:30 hari ini // rule 1
   // final now = DateTime(2025, 10, 24, 13, 59); // 13:59 hari ini // rule 2
   // final now = DateTime(2025, 10, 24, 14, 10); // 14:10 hari ini // rule 2
-  final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
+  // final now = DateTime(2025, 10, 26, 14, 00); // 14:30 tanggal 25 // rule 3
   // final now = DateTime(2025, 10, 26, 14, 30); // 14:30 minggu // rule 4
 
-  // final now = scannedTime;
+  final now = scannedTime;
 
   for (var item in updatedCart) {
     final applicableLinks = discountItemLinks.where((link) => link.itemId == item.id).toList();
@@ -55,7 +53,6 @@ List<CartItem> recalculateDiscounts(
       if (targetItem.id == -1) continue;
 
       // 🔹 Check discount usage limit
-      log("usage.totalApplied : ${rule.id} - ${item.id}");
       final usage = discountUsages.firstWhere(
         (u) => u.ruleId == rule.id && u.itemId == item.id,
         orElse: () => DiscountUsage(
@@ -64,6 +61,7 @@ List<CartItem> recalculateDiscounts(
           itemId: item.id,
           date: now,
           totalApplied: 0,
+          amountApplied: 0,
           startDate: null,
           limitValue: null,
         ),
@@ -160,6 +158,15 @@ List<CartItem> recalculateDiscounts(
 
       if (rule.maxAmount != null && discountValue > rule.maxAmount!) {
         discountValue = rule.maxAmount!;
+      }
+
+      if (rule.maxAmount != null) {
+        if (usage.amountApplied >= rule.maxAmount!) {
+          discountedQty = 0;
+          discountValue = 0;
+        } else if (usage.amountApplied + discountValue > rule.maxAmount!) {
+          discountValue = rule.maxAmount! - usage.amountApplied;
+        }
       }
 
       discountCandidatesBySource.putIfAbsent(item.id, () => []);

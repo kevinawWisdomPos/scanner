@@ -31,17 +31,13 @@ class DiscountRepo {
     final usages = raw.map((e) => DiscountUsage.fromMap(e)).toList();
     final result = <DiscountUsage>[];
 
-    // 2️⃣ Filter and group by (ruleId, itemId)
     for (final rule in rules) {
-      // get all usages for this rule
       final ruleUsages = usages.where((u) => u.ruleId == rule.id).toList();
       if (ruleUsages.isEmpty) continue;
 
-      // determine active time window
       DateTime start;
       DateTime end;
 
-      // filter start and end date
       switch (rule.limitType) {
         case LimitType.daily:
           start = DateTime(now.year, now.month, now.day);
@@ -56,7 +52,8 @@ class DiscountRepo {
 
         case LimitType.monthly:
           start = DateTime(now.year, now.month, 1);
-          end = DateTime(now.year, now.month + 1, 1);
+          // handle December -> next year safely
+          end = (now.month == 12) ? DateTime(now.year + 1, 1, 1) : DateTime(now.year, now.month + 1, 1);
           break;
 
         case LimitType.days:
@@ -73,18 +70,26 @@ class DiscountRepo {
           break;
       }
 
-      final filtered = ruleUsages.where((u) => u.date.isAfter(start) && u.date.isBefore(end));
+      // ✅ Filter within limit window
+      final filtered = ruleUsages.where(
+        (u) =>
+            (u.date.isAfter(start) || u.date.isAtSameMomentAs(start)) &&
+            (u.date.isBefore(end) || u.date.isAtSameMomentAs(end)),
+      );
 
+      // ✅ Group by ruleId + itemId to support many-to-many
       final grouped = <String, List<DiscountUsage>>{};
       for (final u in filtered) {
         final key = '${u.ruleId}-${u.itemId}';
         grouped.putIfAbsent(key, () => []).add(u);
       }
 
-      for (final entries in grouped.entries) {
-        final groupedUsages = entries.value;
+      // ✅ Aggregate totals
+      for (final entry in grouped.entries) {
+        final groupedUsages = entry.value;
         final first = groupedUsages.first;
         final totalSum = groupedUsages.fold<int>(0, (sum, u) => sum + u.totalApplied);
+        final amountSum = groupedUsages.fold<double>(0, (sum, u) => sum + (u.amountApplied));
 
         result.add(
           DiscountUsage(
@@ -93,13 +98,13 @@ class DiscountRepo {
             itemId: first.itemId,
             date: now,
             totalApplied: totalSum,
+            amountApplied: amountSum,
             startDate: start,
             limitValue: rule.limitValue,
           ),
         );
       }
     }
-
     return result;
   }
 }

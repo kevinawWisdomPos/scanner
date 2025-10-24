@@ -4,6 +4,7 @@ class DiscountUsage {
   final int itemId;
   final DateTime date;
   final int totalApplied;
+  final double amountApplied;
   final DateTime? startDate;
   final int? limitValue;
 
@@ -13,6 +14,7 @@ class DiscountUsage {
     required this.itemId,
     required this.date,
     required this.totalApplied,
+    required this.amountApplied,
     this.startDate,
     this.limitValue,
   });
@@ -24,6 +26,7 @@ class DiscountUsage {
       itemId: map['itemId'],
       date: DateTime.parse(map['date']),
       totalApplied: map['totalApplied'],
+      amountApplied: map['amountApplied'],
       startDate: map['start_date'] != null ? DateTime.tryParse(map['start_date']) : null,
       limitValue: map['limit_value'],
     );
@@ -35,6 +38,7 @@ class DiscountUsage {
     'itemId': itemId,
     'date': date.toIso8601String(),
     'totalApplied': totalApplied,
+    'amountApplied': amountApplied,
     'start_date': startDate?.toIso8601String(),
     'limit_value': limitValue,
   };

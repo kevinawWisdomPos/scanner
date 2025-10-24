@@ -59,12 +59,25 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
     _loadNextBatch();
 
-    scannedTime = DateTime(2025, 10, 27);
     _focusNode.addListener(() {
       if (!_focusNode.hasFocus) {
         Future.delayed(const Duration(milliseconds: 100), _focusNode.requestFocus);
       }
     });
+
+    /// rule 1
+    scannedTime = DateTime(2025, 10, 26);
+    // scannedTime = DateTime(2025, 10, 26); // belom reset
+    // scannedTime = DateTime(2025, 10, 27); // sudah reset
+
+    /// rule 2
+    // scannedTime = DateTime(2025, 10, 24);
+    // scannedTime = DateTime(2025, 11, 1);
+
+    /// rule 3
+    // scannedTime = DateTime(2025, 10, 20);
+    // scannedTime = DateTime(2025, 10, 21);
+    // scannedTime = DateTime(2025, 10, 22);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await loadDiscountUsage();
@@ -262,6 +275,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
             'ruleId': item.autoDiscountId,
             'date': nowIso,
             'totalApplied': item.qtyDiscounted,
+            'amountApplied': item.discountApplied,
             'start_date': startDateIso,
             'limit_value': limitValue,
             'itemId': item.id,

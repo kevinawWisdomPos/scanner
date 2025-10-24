@@ -39,6 +39,7 @@ class DBHelper {
         itemId INTEGER,
         date TEXT,                 -- date of usage
         totalApplied INTEGER,      -- how many times applied
+        amountApplied DOUBLE,      -- how many times applied
         start_date TEXT,           -- when the limit started (for daily/weekly/monthly)
         limit_value INTEGER       -- the limit count 
       )
@@ -61,6 +62,12 @@ class DBHelper {
   static Future<List<Map<String, dynamic>>> getHistory() async {
     final db = await database;
     final result = await db.query('purchase_history', orderBy: 'date DESC');
+    return result;
+  }
+
+  static Future<List<Map<String, dynamic>>> getDiscountUsage() async {
+    final db = await database;
+    final result = await db.query('discount_usage');
     return result;
   }
 }
