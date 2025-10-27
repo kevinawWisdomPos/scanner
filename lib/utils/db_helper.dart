@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -47,9 +45,7 @@ class DBHelper {
   }
 
   static Future<void> deleteDb() async {
-    log("LOADING");
     await deleteDatabase('${await getDatabasesPath()}/$dbName');
-    log("DELETE SUCCESS");
   }
 
   static Future<void> saveDiscountUsage(int ruleId, int totalApplied) async {

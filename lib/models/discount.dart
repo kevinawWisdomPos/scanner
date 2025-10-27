@@ -66,6 +66,15 @@ class DiscountRule {
     bool matchesDate = true;
     bool matchesTime = true;
 
+    if (startDate != null && limitValue != null) {
+      var start = startDate!;
+      var end = start.add(Duration(days: limitValue!));
+      if ((now.isAfter(start) || now.isAtSameMomentAs(start)) && (now.isBefore(end) || now.isAtSameMomentAs(end))) {
+      } else {
+        return false;
+      }
+    }
+
     // --- repeat every that date ---
     if (date != null) {
       matchesDate = now.day == date;
@@ -86,7 +95,6 @@ class DiscountRule {
 
         final start = TimeOfDay(hour: hour, minute: minute);
 
-        // ✅ Convert duration to minutes (default 60)
         final totalMinutes = durationInMinute ?? 60;
         final addedHours = totalMinutes ~/ 60;
         final addedMinutes = totalMinutes % 60;
@@ -268,7 +276,6 @@ class DiscountRule {
         maxQty: 10,
         startDate: DateTime(2025, 10, 24),
         limitType: LimitType.weekly,
-        limitValue: 2,
       ),
       DiscountRule(
         id: 402,

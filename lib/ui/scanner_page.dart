@@ -12,6 +12,7 @@ import 'package:scanner/repo/data.dart';
 import 'package:scanner/repo/discount_repo.dart';
 import 'package:scanner/ui/discount_dialog.dart';
 import 'package:scanner/ui/history_list.dart';
+import 'package:scanner/utils/date_picker.dart';
 import 'package:scanner/utils/db_helper.dart';
 import 'package:scanner/utils/torupiah.dart';
 import 'package:scanner/utils/utils.dart';
@@ -131,6 +132,15 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     }
   }
 
+  Future<void> _onClickDatePicker() async {
+    final selected = await pickDateTime(context);
+    if (selected != null) {
+      scannedTime = selected;
+      await loadDiscountUsage();
+      setState(() {});
+    }
+  }
+
   Future<void> _loadNextBatch() async {
     if (_isLoadingMore) return;
     setState(() => _isLoadingMore = true);
@@ -231,39 +241,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     final manualRule = await showManualDiscountDialog(context);
     if (manualRule == null) return;
 
-    final previousManualDiscount = item.manualDiscountAmount ?? 0.0;
-    double previousAutoDiscount = item.discountApplied - previousManualDiscount;
-
-    // Remove only the old manual discount (keep auto)
-    item.manualDiscountRule = manualRule;
-    if (item.isRestricted || manualRule.restricted) {
-      item.autoDiscountId = null;
-      item.discName = null;
-      item.discountApplied = 0;
-      item.manualDiscountAmount = null;
-      item.manualDiscountRule = null;
-      item.isRestricted = true;
-      previousAutoDiscount = 0;
-    }
-
-    final double itemSubtotal = item.price * item.qty;
-    final double remainingTotal = itemSubtotal - previousAutoDiscount;
-
-    double newManualDiscount = 0;
-
-    // Calculate new discount
-    if (manualRule.type == DiscountType.percent && manualRule.discountPercent != null) {
-      newManualDiscount = remainingTotal * (manualRule.discountPercent! / 100);
-    } else if (manualRule.type == DiscountType.amount && manualRule.discountAmount != null) {
-      newManualDiscount = manualRule.discountAmount!;
-      // for fixed amount, limit it to remaining total (never over-discount)
-      if (newManualDiscount > remainingTotal) newManualDiscount = remainingTotal;
-    }
-
-    item.qtyDiscounted = item.qty;
-    item.manualDiscountAmount = newManualDiscount;
-    item.discountApplied = previousAutoDiscount + newManualDiscount;
-
+    recalculateManualDiscounts(manualRule, item, _discountUsage, scannedTime);
     setState(() {});
   }
 
@@ -357,7 +335,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     return Scaffold(
       appBar: AppBar(
         title: !_isSearching
-            ? const Text('Hardware Scanner')
+            ? const Text('Scanner')
             : TextField(
                 controller: _controller,
                 autofocus: true,
@@ -413,58 +391,70 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
             },
             child: Stack(
               children: [
-                ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: _shownData.length + (_isLoadingMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == _shownData.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                      );
-                    }
-                    final item = _shownData[index];
-                    return GestureDetector(
-                      onTap: () {
-                        _onSubmitted(item["barcode"]);
+                Column(
+                  children: [
+                    ElevatedButton(
+                      onPressed: () async {
+                        await _onClickDatePicker();
                       },
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 3,
-                              color: Colors.black.withValues(alpha: 0.08),
-                              offset: const Offset(0, 1),
+                      child: Text('$scannedTime'),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: _shownData.length + (_isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == _shownData.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            );
+                          }
+                          final item = _shownData[index];
+                          return GestureDetector(
+                            onTap: () {
+                              _onSubmitted(item["barcode"]);
+                            },
+                            child: Container(
+                              width: double.infinity,
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    blurRadius: 3,
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("No. ${item["id"]}"),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(item["name"], overflow: TextOverflow.ellipsis),
+                                      Text(((item["price"] ?? 0) as num).toRupiah()),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [Icon(Icons.qr_code), SizedBox(width: 10), Text("${item["barcode"]}")],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("No. ${item["id"]}"),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(item["name"], overflow: TextOverflow.ellipsis),
-                                Text(((item["price"] ?? 0) as num).toRupiah()),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [Icon(Icons.qr_code), SizedBox(width: 10), Text("${item["barcode"]}")],
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
 
                 _cart(),
@@ -527,8 +517,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     final price = item.price.toDouble();
     final discount = item.discountApplied.toDouble();
     final hasDiscount = discount > 0 || (item.manualDiscountAmount ?? 0) > 0;
-    log("discount : $discount");
-    log("hasDiscount : $hasDiscount");
 
     final discountQty = item.qtyDiscounted;
     final normalQty = item.qty - discountQty;
@@ -554,6 +542,14 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     }
 
     if (hasDiscount && discountQty > 0) {
+      String discName = "";
+      if (item.discName != null && item.manualDiscountRule != null) {
+        discName = "${item.discName ?? ""} \n${item.manualDiscountRule != null ? item.manualDiscountRule?.name : ''}";
+      } else if (item.discName != null) {
+        discName = item.discName ?? "-";
+      } else if (item.manualDiscountRule != null) {
+        discName = item.manualDiscountRule?.name ?? "-";
+      }
       rows.add(
         _buildCartRow(
           name: "${item.name} (Disc)",
@@ -563,7 +559,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           normal: totalDiscountBeforeDisc,
           isDiscounted: true,
           discountAmount: discount,
-          discName: item.discName,
+          discName: discName,
         ),
       );
     }

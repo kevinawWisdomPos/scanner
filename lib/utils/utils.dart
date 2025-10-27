@@ -91,7 +91,11 @@ List<CartItem> recalculateDiscounts(
         }
 
         if (itemQty >= buyQty && buyQty > 0) {
-          eligibleQty = itemQty;
+          if (targetItem.qty > item.qty) {
+            eligibleQty = item.qty ~/ buyQty;
+          } else {
+            eligibleQty = targetItem.qty ~/ buyQty;
+          }
           eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
           discountedQty = eligibleQty;
           discountValue = discountedQty * itemPrice * discountPercent;
@@ -113,7 +117,11 @@ List<CartItem> recalculateDiscounts(
         }
 
         if (itemQty >= buyQty) {
-          eligibleQty = itemQty ~/ buyQty;
+          if (targetItem.qty > item.qty) {
+            eligibleQty = item.qty ~/ buyQty;
+          } else {
+            eligibleQty = targetItem.qty ~/ buyQty;
+          }
           eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
 
           discountedQty = eligibleQty * buyQty;
@@ -221,4 +229,150 @@ int recalculateEligibleQty(int eligible, int usage, int? max) {
     eligible = max - usage;
   }
   return eligible;
+}
+
+double recalculateManualDiscounts(DiscountRule rule, CartItem item, List<DiscountUsage> discountUsages, DateTime now) {
+  if (!rule.isActiveNow(now)) return 0;
+
+  final previousManualDiscount = item.manualDiscountAmount ?? 0.0;
+  double previousAutoDiscount = item.discountApplied - previousManualDiscount;
+
+  // Remove only the old manual discount (keep auto)
+  item.manualDiscountRule = rule;
+  if (item.isRestricted || rule.restricted) {
+    item.autoDiscountId = null;
+    item.discName = null;
+    item.discountApplied = 0;
+    item.manualDiscountAmount = null;
+    item.manualDiscountRule = null;
+    item.isRestricted = true;
+    item.qtyDiscounted = 0;
+    previousAutoDiscount = 0;
+  }
+
+  final buyQty = rule.buyQty ?? 0;
+  final getQty = rule.getQty ?? 0;
+  final discountPercent = (rule.discountPercent ?? 0) / 100;
+  final discountAmount = rule.discountAmount ?? 0;
+  final targetItemId = item.id;
+  final targetItem = item;
+
+  // 🔹 Check discount usage limit
+  final usage = discountUsages.firstWhere(
+    (u) => u.ruleId == rule.id && u.itemId == item.id,
+    orElse: () => DiscountUsage(
+      id: -1,
+      ruleId: rule.id,
+      itemId: item.id,
+      date: now,
+      totalApplied: 0,
+      amountApplied: 0,
+      startDate: null,
+      limitValue: null,
+    ),
+  );
+
+  double discountValue = 0.0;
+  int discountedQty = 0;
+
+  int itemQty = item.qty;
+  double itemPrice = item.price;
+
+  int eligibleQty = 0;
+
+  /// "PERCENT":
+  /// buy minimum quantity pcs get discountPercent
+  /// buy 5 pcs disc 10%
+  /// "UP TO": set discount rule maxAmount to specific amount
+  /// buy 2 pcs disc 40% up to 20000:
+  ///   set buyQty 2 - discountPercent 40 - maxAmount - 20000
+  if (rule.type == DiscountType.percent) {
+    if (itemQty >= buyQty && buyQty > 0) {
+      eligibleQty = itemQty;
+      eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+      final double itemSubtotal = itemPrice * eligibleQty;
+      final double remainingTotal = itemSubtotal - previousAutoDiscount;
+
+      discountedQty = itemQty;
+      discountValue = (remainingTotal) * discountPercent;
+    }
+  }
+  /// "VOLUME":
+  /// buy specific quantity get discountPercent
+  /// buy 5 pcs discount 10%
+  /// buy 8 pcs:
+  ///   5 pcs discount 10%
+  ///   3 pcs normal price
+  else if (rule.type == DiscountType.volume) {
+    if (itemQty >= buyQty) {
+      eligibleQty = itemQty ~/ buyQty;
+      eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+
+      discountedQty = eligibleQty * buyQty;
+      final double itemSubtotal = itemPrice * discountedQty;
+      final double remainingTotal = itemSubtotal - previousAutoDiscount;
+
+      discountValue = remainingTotal * discountPercent;
+    }
+  }
+  /// "BOGO":
+  /// buy specific quantity get specific discountPercent
+  /// buy 2 pcs get 1 pcs discount 50%
+  /// buy 1 pcs get 1 pcs discount 100% -> buy 1 get 1
+  else if (rule.type == DiscountType.bogo) {
+    eligibleQty = item.qty ~/ (buyQty + getQty);
+    eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+
+    final freeCount = eligibleQty * getQty;
+    discountedQty = freeCount;
+    discountValue = freeCount * targetItem.price * discountPercent;
+
+    if (targetItemId == item.id) {
+      eligibleQty = item.qty ~/ (buyQty + getQty);
+      eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+
+      final freeCount = eligibleQty * getQty;
+      discountedQty = freeCount;
+      discountValue = freeCount * targetItem.price * discountPercent;
+    } else {
+      if (item.qty >= buyQty) {
+        eligibleQty = (item.qty ~/ buyQty) * getQty;
+        eligibleQty = recalculateEligibleQty(eligibleQty, usage.totalApplied, rule.maxQty);
+
+        final affectedQty = eligibleQty > targetItem.qty ? targetItem.qty : eligibleQty;
+        discountedQty = affectedQty;
+        discountValue = affectedQty * targetItem.price * discountPercent;
+      }
+    }
+  }
+  /// "AMOUNT":
+  /// buy specific quantity get specific discountAmount
+  /// each buy 2 pcs get 20.000
+  else if (rule.type == DiscountType.amount) {
+    eligibleQty = item.qty ~/ buyQty;
+    discountedQty = eligibleQty * buyQty;
+    discountValue = eligibleQty * discountAmount;
+  }
+
+  /// ================================================================
+  if (discountValue <= 0 || discountedQty <= 0) return 0;
+
+  if (rule.maxAmount != null && discountValue > rule.maxAmount!) {
+    discountValue = rule.maxAmount!;
+  }
+
+  if (rule.maxAmount != null) {
+    if (usage.amountApplied >= rule.maxAmount!) {
+      discountedQty = 0;
+      discountValue = 0;
+    } else if (usage.amountApplied + discountValue > rule.maxAmount!) {
+      discountValue = rule.maxAmount! - usage.amountApplied;
+    }
+  }
+
+  item.qtyDiscounted = item.qty;
+  item.manualDiscountAmount = discountValue;
+  item.discountApplied = previousAutoDiscount + discountValue;
+  item.manualDiscountRule = rule;
+  return discountValue;
 }

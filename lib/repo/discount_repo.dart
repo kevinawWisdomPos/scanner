@@ -58,33 +58,29 @@ class DiscountRepo {
 
         case LimitType.days:
           if (rule.startDate == null || rule.limitValue == null) continue;
-          final diff = now.difference(rule.startDate!).inDays;
-          final cycle = (diff / rule.limitValue!).floor();
-          start = rule.startDate!.add(Duration(days: cycle * rule.limitValue!));
+          start = rule.startDate!;
           end = start.add(Duration(days: rule.limitValue!));
           break;
 
         default:
           start = DateTime(2000);
-          end = DateTime(9999);
+          end = DateTime(2000);
           break;
       }
 
-      // ✅ Filter within limit window
       final filtered = ruleUsages.where(
         (u) =>
             (u.date.isAfter(start) || u.date.isAtSameMomentAs(start)) &&
             (u.date.isBefore(end) || u.date.isAtSameMomentAs(end)),
       );
 
-      // ✅ Group by ruleId + itemId to support many-to-many
+      // grouping rule-itemId
       final grouped = <String, List<DiscountUsage>>{};
       for (final u in filtered) {
         final key = '${u.ruleId}-${u.itemId}';
         grouped.putIfAbsent(key, () => []).add(u);
       }
 
-      // ✅ Aggregate totals
       for (final entry in grouped.entries) {
         final groupedUsages = entry.value;
         final first = groupedUsages.first;
