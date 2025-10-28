@@ -329,27 +329,29 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   void recalculateGlobalDiscount() {
     final subtotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.price * item.qty));
     final discTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + item.discountApplied);
+    final manualDiscTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.manualDiscountAmount ?? 0));
+    final totalDisc = discTotal + manualDiscTotal;
     if (globalDiscountRule != null && globalDiscountRule!.type == DiscountType.minAmount) {
-      if (globalDiscountRule!.minAmount != null && subtotal < globalDiscountRule!.minAmount!) {
+      if (globalDiscountRule!.minAmount != null && (subtotal - totalDisc) < globalDiscountRule!.minAmount!) {
         totalDiscAmount = 0;
-        totalAmount = subtotal - discTotal;
+        totalAmount = subtotal - totalDisc;
         globalDiscountRule = null;
         setState(() {});
         return;
       }
 
       if (globalDiscountRule!.discountPercent != null && globalDiscountRule!.discountPercent! > 0) {
-        totalDiscAmount = (subtotal - discTotal) * (globalDiscountRule!.discountPercent! / 100);
+        totalDiscAmount = (subtotal - totalDisc) * (globalDiscountRule!.discountPercent! / 100);
       } else if (globalDiscountRule!.discountAmount != null && globalDiscountRule!.discountAmount! > 0) {
         totalDiscAmount = globalDiscountRule!.discountAmount!;
       }
       // Apply the discount
-      totalAmount = subtotal - totalDiscAmount - discTotal;
+      totalAmount = subtotal - totalDiscAmount - totalDisc;
 
       setState(() {});
     } else {
       totalDiscAmount = 0;
-      totalAmount = subtotal - discTotal;
+      totalAmount = subtotal - totalDisc;
       setState(() {});
       return;
     }
