@@ -52,6 +52,10 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   String _sortField = 'none';
   bool _isAscending = true;
 
+  DiscountRule? globalDiscountRule;
+  double totalAmount = 0;
+  double totalDiscAmount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -123,7 +127,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
       ..addAll(newCart);
 
     _controller.clear();
-    setState(() {});
+    recalculateGlobalDiscount();
   }
 
   void updateScanTime() {
@@ -237,14 +241,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     recalibratingListVIew();
   }
 
-  Future<void> showDialog(CartItem item) async {
-    final manualRule = await showManualDiscountDialog(context);
-    if (manualRule == null) return;
-
-    recalculateManualDiscounts(manualRule, item, _discountUsage, scannedTime);
-    setState(() {});
-  }
-
   Future<void> submitingHistory() async {
     try {
       log("LOADING");
@@ -328,6 +324,48 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('⚠️ Failed to save history: $e')));
       }
     }
+  }
+
+  void recalculateGlobalDiscount() {
+    final subtotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.price * item.qty));
+    final discTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + item.discountApplied);
+    if (globalDiscountRule != null && globalDiscountRule!.type == DiscountType.minAmount) {
+      if (globalDiscountRule!.minAmount != null && subtotal < globalDiscountRule!.minAmount!) {
+        totalDiscAmount = 0;
+        totalAmount = subtotal - discTotal;
+        globalDiscountRule = null;
+        setState(() {});
+        return;
+      }
+
+      if (globalDiscountRule!.discountPercent != null && globalDiscountRule!.discountPercent! > 0) {
+        totalDiscAmount = (subtotal - discTotal) * (globalDiscountRule!.discountPercent! / 100);
+      } else if (globalDiscountRule!.discountAmount != null && globalDiscountRule!.discountAmount! > 0) {
+        totalDiscAmount = globalDiscountRule!.discountAmount!;
+      }
+      // Apply the discount
+      totalAmount = subtotal - totalDiscAmount - discTotal;
+
+      setState(() {});
+    } else {
+      totalDiscAmount = 0;
+      totalAmount = subtotal - discTotal;
+      setState(() {});
+      return;
+    }
+  }
+
+  Future<void> showDialog(CartItem item) async {
+    final manualRule = await showManualDiscountDialog(context);
+    if (manualRule == null) return;
+
+    recalculateManualDiscounts(manualRule, item, _discountUsage, scannedTime);
+    recalculateGlobalDiscount();
+  }
+
+  Future<void> showGlobalDiscAmount() async {
+    globalDiscountRule = await showManualDiscountDialog(context);
+    recalculateGlobalDiscount();
   }
 
   @override
@@ -504,6 +542,63 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                   itemCount: _cartDataView.length,
                   separatorBuilder: (_, __) => const Divider(height: 32, color: Colors.grey),
                   itemBuilder: (context, index) => _cartCard(_cartDataView[index]),
+                ),
+              ),
+              SizedBox(height: 8),
+              GestureDetector(
+                onTap: () {
+                  showGlobalDiscAmount();
+                },
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black.withValues(alpha: 0.2))],
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Row(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Total"),
+                          if (totalDiscAmount > 0) ...[
+                            Text(
+                              "Disc: ${totalDiscAmount.toRupiah()}",
+                              style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Spacer(),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            (totalAmount + totalDiscAmount).toRupiah(),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: totalDiscAmount > 0 ? Colors.grey : Colors.black,
+                              decoration: totalDiscAmount > 0 ? TextDecoration.lineThrough : TextDecoration.none,
+                              decorationThickness: 2,
+                            ),
+                          ),
+                          if (totalDiscAmount > 0) ...[
+                            Text(
+                              totalAmount.toRupiah(),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                                decorationThickness: 2,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

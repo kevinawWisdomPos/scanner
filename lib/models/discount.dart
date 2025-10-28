@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
-enum DiscountType { percent, volume, bogo, amount, upto }
+enum DiscountType { percent, volume, bogo, amount, bundling, minAmount }
 
 enum LimitType { transaction, daily, weekly, monthly, days }
 
 class DiscountRule {
   final int id;
   final String name;
-  final DiscountType type; // "BOGO", "PERCENT", "VOLUME", "AMOUNT", "UP TO"
+  final DiscountType type; // "BOGO", "PERCENT", "VOLUME", "AMOUNT", "BUNDLING"
   final double? discountPercent;
   final double? discountAmount;
   final int? buyQty;
   final int? getQty;
   final bool autoApply;
+  final double? minAmount;
   final double? maxAmount;
 
   final List<int>? weekDays;
@@ -47,6 +48,7 @@ class DiscountRule {
     this.getQty,
     this.autoApply = true,
     this.maxQty,
+    this.minAmount,
     this.maxAmount,
     this.weekDays,
     this.startTimes,
@@ -313,6 +315,80 @@ class DiscountRule {
         buyQty: 7,
         autoApply: false,
         restricted: true,
+      ),
+      DiscountRule(
+        id: 503,
+        name: "Buy Min Rp 250.000 get disc 10%",
+        type: DiscountType.minAmount,
+        discountPercent: 10,
+        minAmount: 250000,
+        autoApply: false,
+      ),
+      DiscountRule(
+        id: 504,
+        name: "Buy Min Rp 250.000 get disc Rp 30.000",
+        type: DiscountType.minAmount,
+        discountAmount: 30000,
+        minAmount: 250000,
+        autoApply: false,
+      ),
+      DiscountRule(
+        id: 601,
+        name: "Buy 2 Pepsi + 1 Chips get 20k",
+        type: DiscountType.bundling,
+        discountAmount: 20000,
+        buyQty: 2,
+        getQty: 1,
+        autoApply: true,
+      ),
+      DiscountRule(
+        id: 602,
+        name: "Buy 5 Cola + 5 Bomb get 50k",
+        type: DiscountType.bundling,
+        discountAmount: 50000,
+        buyQty: 5,
+        getQty: 5,
+        autoApply: true,
+      ),
+      DiscountRule(
+        id: 701,
+        name: "Buy 3 Fanta get 2 cola",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 3,
+        getQty: 2,
+      ),
+      DiscountRule(
+        id: 702,
+        name: "Buy 2 Cola get 1 cola",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 2,
+        getQty: 1,
+      ),
+      DiscountRule(
+        id: 703,
+        name: "Buy 5 Sprite get 4 cola",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 5,
+        getQty: 4,
+      ),
+      DiscountRule(
+        id: 704,
+        name: "Buy 5 Water get 3 Sprite",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 5,
+        getQty: 3,
+      ),
+      DiscountRule(
+        id: 705,
+        name: "Buy 8 Water get 4 bomb",
+        type: DiscountType.bogo,
+        discountPercent: 100,
+        buyQty: 8,
+        getQty: 4,
       ),
     ];
   }

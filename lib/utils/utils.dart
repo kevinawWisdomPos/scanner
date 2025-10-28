@@ -10,7 +10,7 @@ List<CartItem> recalculateDiscounts(
   List<DiscountUsage> discountUsages,
   DateTime scannedTime,
 ) {
-  final Map<int, List<_DiscountCandidate>> discountCandidatesBySource = {};
+  final Map<int, List<DiscountCandidate>> discountCandidatesBySource = {};
   final updatedCart = cartData.map((e) => e.copy()).toList();
 
   // final now = DateTime.now();
@@ -39,7 +39,7 @@ List<CartItem> recalculateDiscounts(
 
     for (var i = 0; i < applicableRules.length; i++) {
       final rule = applicableRules[i];
-      final link = applicableLinks[i];
+      final link = applicableLinks.firstWhere((element) => element.discountId == rule.id);
       if (!rule.isActiveNow(now)) continue;
 
       final buyQty = rule.buyQty ?? 0;
@@ -160,6 +160,30 @@ List<CartItem> recalculateDiscounts(
         discountedQty = eligibleQty * buyQty;
         discountValue = eligibleQty * discountAmount;
       }
+      /// "BUNDLING":
+      /// buy x and y get z amount
+      /// every 2 cola & 1 fanta get 20.000
+      else if (rule.type == DiscountType.bundling) {
+        final itemX = item;
+        final itemY = updatedCart.firstWhere(
+          (c) => c.id == (link.targetItemId ?? -1),
+          orElse: () => CartItem(id: -1, name: '', price: 0),
+        );
+
+        if (itemY.id == -1) continue;
+
+        if (itemX.qty >= (rule.buyQty ?? 1) && itemY.qty >= (rule.getQty ?? 1)) {
+          final int bundleCount = [
+            itemX.qty ~/ (rule.buyQty ?? 1),
+            itemY.qty ~/ (rule.getQty ?? 1),
+          ].reduce((a, b) => a < b ? a : b);
+
+          final int eligibleQty = recalculateEligibleQty(bundleCount, usage.totalApplied, rule.maxQty);
+
+          discountedQty = eligibleQty * (rule.getQty ?? 1);
+          discountValue = eligibleQty * (rule.discountAmount ?? 0);
+        }
+      }
 
       /// ================================================================
       if (discountValue <= 0 || discountedQty <= 0) continue;
@@ -179,40 +203,26 @@ List<CartItem> recalculateDiscounts(
 
       discountCandidatesBySource.putIfAbsent(item.id, () => []);
       discountCandidatesBySource[item.id]!.add(
-        _DiscountCandidate(targetItemId, discountValue, discountedQty, rule.name, rule.id),
+        DiscountCandidate(item.id, targetItemId, discountValue, discountedQty, rule.name, rule.id),
       );
     }
   }
 
-  // -------- APPLY BIGGEST DISCOUNT --------
-  for (var sourceId in discountCandidatesBySource.keys) {
-    final candidates = discountCandidatesBySource[sourceId]!;
-    final biggest = candidates.reduce((a, b) => a.value > b.value ? a : b);
-
-    final target = updatedCart.firstWhere(
-      (c) => c.id == biggest.targetId,
-      orElse: () => CartItem(id: -1, name: '', price: 0),
-    );
-
-    if (target.id != -1) {
-      target.discountApplied = biggest.value;
-      target.qtyDiscounted = biggest.discountQty;
-      target.discName = biggest.discName;
-      target.autoDiscountId = biggest.discId;
-    }
-  }
+  // normalCombination(updatedCart, discountCandidatesBySource);
+  bestCombination1(updatedCart, discountCandidatesBySource);
 
   return updatedCart;
 }
 
-class _DiscountCandidate {
+class DiscountCandidate {
+  final int itemId;
   final int targetId;
   final double value;
   final int discountQty;
   final String discName;
   final int discId;
 
-  _DiscountCandidate(this.targetId, this.value, this.discountQty, this.discName, this.discId);
+  DiscountCandidate(this.itemId, this.targetId, this.value, this.discountQty, this.discName, this.discId);
 }
 
 int recalculateEligibleQty(int eligible, int usage, int? max) {
@@ -229,6 +239,167 @@ int recalculateEligibleQty(int eligible, int usage, int? max) {
     eligible = max - usage;
   }
   return eligible;
+}
+
+void normalCombination(List<CartItem> updatedCart, Map<int, List<DiscountCandidate>> discountCandidatesBySource) {
+  // Clear all previous auto discounts
+  for (var c in updatedCart) {
+    c.discountApplied = 0;
+    c.qtyDiscounted = 0;
+    c.discName = null;
+    c.autoDiscountId = null;
+  }
+
+  final Map<int, DiscountCandidate> bestCandidatePerSource = {};
+  for (var sourceId in discountCandidatesBySource.keys) {
+    final candidates = discountCandidatesBySource[sourceId]!;
+
+    // Find the biggest discount within the same source
+    final biggestForSource = candidates.reduce((a, b) => a.value > b.value ? a : b);
+    final existing = bestCandidatePerSource[sourceId];
+    if (existing == null || biggestForSource.value > existing.value) {
+      bestCandidatePerSource[sourceId] = biggestForSource;
+    }
+  }
+
+  final Map<int, DiscountCandidate> bestCandidatePerTarget = {};
+  for (final cand in bestCandidatePerSource.values) {
+    final existing = bestCandidatePerTarget[cand.targetId];
+    if (existing == null || cand.value > existing.value) {
+      bestCandidatePerTarget[cand.targetId] = cand;
+    }
+  }
+
+  // Apply discounts to target items
+  for (final cand in bestCandidatePerTarget.values) {
+    final target = updatedCart.firstWhere(
+      (c) => c.id == cand.targetId,
+      orElse: () => CartItem(id: -1, name: '', price: 0),
+    );
+
+    if (target.id == -1) continue;
+
+    target.discountApplied = cand.value;
+    target.qtyDiscounted = cand.discountQty;
+    target.discName = cand.discName;
+    target.autoDiscountId = cand.discId;
+  }
+}
+
+// 1 item can only have 1 discount
+void bestCombination1(List<CartItem> updatedCart, Map<int, List<DiscountCandidate>> discountCandidatesBySource) {
+  // Flatten all discount candidates into one list
+  final allCandidates = discountCandidatesBySource.values.expand((e) => e).toList();
+
+  // Sort candidates by discount value (highest first)
+  allCandidates.sort((a, b) => b.value.compareTo(a.value));
+
+  final usedItems = <int>{}; // items that already used as source or target
+  final bestCombo = <DiscountCandidate>[];
+
+  // Pick the best combination (no shared items)
+  for (final cand in allCandidates) {
+    if (usedItems.contains(cand.itemId) || usedItems.contains(cand.targetId)) {
+      continue; // skip if either item already involved in another discount
+    }
+
+    usedItems.add(cand.itemId);
+    usedItems.add(cand.targetId);
+    bestCombo.add(cand);
+  }
+
+  // Reset previous discounts
+  for (final item in updatedCart) {
+    item
+      ..discountApplied = 0
+      ..qtyDiscounted = 0
+      ..discName = null
+      ..autoDiscountId = null;
+  }
+
+  // Apply the selected best discounts
+  for (final cand in bestCombo) {
+    final target = updatedCart.firstWhere(
+      (c) => c.id == cand.targetId,
+      orElse: () => CartItem(id: -1, name: '', price: 0),
+    );
+    if (target.id == -1) continue;
+
+    target
+      ..discountApplied = cand.value
+      ..qtyDiscounted = cand.discountQty
+      ..discName = cand.discName
+      ..autoDiscountId = cand.discId;
+  }
+}
+
+// all remaining qty can have discount
+void bestCombination2(List<CartItem> updatedCart, Map<int, List<DiscountCandidate>> discountCandidatesBySource) {
+  final allCandidates = discountCandidatesBySource.values.expand((e) => e).toList();
+  allCandidates.sort((a, b) {
+    final aRatio = a.discountQty == 0 ? a.value : a.value / a.discountQty;
+    final bRatio = b.discountQty == 0 ? b.value : b.value / b.discountQty;
+    return bRatio.compareTo(aRatio);
+  });
+
+  // Remaining quantity map for each item (so discount can reuse remaining)
+  final remainingQty = {for (final item in updatedCart) item.id: item.qty};
+
+  final bestCombo = <DiscountCandidate>[];
+
+  // Pick the best discount candidates
+  for (final cand in allCandidates) {
+    final sourceRemain = remainingQty[cand.itemId] ?? 0;
+    final targetRemain = remainingQty[cand.targetId] ?? 0;
+
+    // no remain qty
+    if (sourceRemain <= 0 || targetRemain <= 0) continue;
+
+    // how many units can we apply for this discount
+    final usableQty = cand.discountQty.clamp(0, targetRemain);
+
+    if (usableQty <= 0) continue;
+
+    // Add to best combination
+    bestCombo.add(
+      DiscountCandidate(
+        cand.itemId,
+        cand.targetId,
+        cand.value * (usableQty / cand.discountQty), // partial proportional discount
+        usableQty,
+        cand.discName,
+        cand.discId,
+      ),
+    );
+
+    // Reduce available qty for next discounts
+    remainingQty[cand.itemId] = (sourceRemain - usableQty).clamp(0, sourceRemain);
+    remainingQty[cand.targetId] = (targetRemain - usableQty).clamp(0, targetRemain);
+  }
+
+  // Reset all discount info
+  for (final item in updatedCart) {
+    item
+      ..discountApplied = 0
+      ..qtyDiscounted = 0
+      ..discName = null
+      ..autoDiscountId = null;
+  }
+
+  // Apply chosen best combination
+  for (final cand in bestCombo) {
+    final target = updatedCart.firstWhere(
+      (c) => c.id == cand.targetId,
+      orElse: () => CartItem(id: -1, name: '', price: 0),
+    );
+    if (target.id == -1) continue;
+
+    target
+      ..discountApplied += cand.value
+      ..qtyDiscounted += cand.discountQty
+      ..discName = cand.discName
+      ..autoDiscountId = cand.discId;
+  }
 }
 
 double recalculateManualDiscounts(DiscountRule rule, CartItem item, List<DiscountUsage> discountUsages, DateTime now) {

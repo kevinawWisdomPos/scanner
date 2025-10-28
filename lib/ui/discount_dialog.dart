@@ -1,5 +1,8 @@
+// ignore_for_file: unreachable_switch_default
+
 import 'package:flutter/material.dart';
 import 'package:scanner/models/discount.dart';
+import 'package:scanner/utils/torupiah.dart';
 
 Future<DiscountRule?> showManualDiscountDialog(BuildContext context) async {
   final manualDiscounts = DiscountRule.discountRules().where((rule) => rule.autoApply == false).toList();
@@ -81,8 +84,15 @@ Widget _discountRuleCard(BuildContext context, DiscountRule rule) {
     case DiscountType.volume:
       detail = "Every ${rule.buyQty} pcs → ${rule.discountPercent?.toStringAsFixed(0)}% off";
       break;
-    case DiscountType.upto:
-      detail = "Up to ${rule.discountPercent?.toStringAsFixed(0)}%";
+    case DiscountType.bundling:
+      detail = "Bundling ${rule.discountAmount?.toStringAsFixed(0)}%";
+      break;
+    case DiscountType.minAmount:
+      detail =
+          "Min buy ${rule.minAmount?.toRupiah()} get ${rule.discountPercent != null ? '${rule.discountPercent}%' : rule.discountAmount?.toRupiah()}";
+      break;
+    default:
+      detail = "Disc ${rule.discountAmount?.toStringAsFixed(0)}%";
       break;
   }
 
