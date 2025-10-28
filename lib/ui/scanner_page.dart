@@ -52,7 +52,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   String _sortField = 'none';
   bool _isAscending = true;
 
-  DiscountRule? globalDiscountRule;
+  List<DiscountRule> globalDiscountRule = [];
   double totalAmount = 0;
   double totalDiscAmount = 0;
 
@@ -331,30 +331,27 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     final discTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + item.discountApplied);
     final manualDiscTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.manualDiscountAmount ?? 0));
     final totalDisc = discTotal + manualDiscTotal;
-    if (globalDiscountRule != null && globalDiscountRule!.type == DiscountType.minAmount) {
-      if (globalDiscountRule!.minAmount != null && (subtotal - totalDisc) < globalDiscountRule!.minAmount!) {
-        totalDiscAmount = 0;
-        totalAmount = subtotal - totalDisc;
-        globalDiscountRule = null;
-        setState(() {});
-        return;
-      }
+    totalDiscAmount = 0;
+    totalAmount = subtotal - totalDiscAmount - totalDisc;
 
-      if (globalDiscountRule!.discountPercent != null && globalDiscountRule!.discountPercent! > 0) {
-        totalDiscAmount = (subtotal - totalDisc) * (globalDiscountRule!.discountPercent! / 100);
-      } else if (globalDiscountRule!.discountAmount != null && globalDiscountRule!.discountAmount! > 0) {
-        totalDiscAmount = globalDiscountRule!.discountAmount!;
-      }
-      // Apply the discount
-      totalAmount = subtotal - totalDiscAmount - totalDisc;
+    if (globalDiscountRule.isNotEmpty) {
+      for (var discRule in globalDiscountRule) {
+        if (discRule.type == DiscountType.minAmount) {
+          if (discRule.minAmount != null && (subtotal - totalDisc) < discRule.minAmount!) {
+            continue;
+          }
 
-      setState(() {});
-    } else {
-      totalDiscAmount = 0;
-      totalAmount = subtotal - totalDisc;
-      setState(() {});
-      return;
+          if (discRule.discountPercent != null && discRule.discountPercent! > 0) {
+            totalDiscAmount += (subtotal - totalDisc) * (discRule.discountPercent! / 100);
+          } else if (discRule.discountAmount != null && discRule.discountAmount! > 0) {
+            totalDiscAmount += discRule.discountAmount!;
+          }
+        }
+      }
     }
+    // Apply the discount
+    totalAmount = subtotal - totalDiscAmount - totalDisc;
+    setState(() {});
   }
 
   Future<void> showDialog(CartItem item) async {
@@ -366,7 +363,21 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   Future<void> showGlobalDiscAmount() async {
-    globalDiscountRule = await showManualDiscountDialog(context);
+    var selectedDisc = await showManualDiscountDialog(context);
+    if (selectedDisc != null) {
+      if (selectedDisc.restricted) {
+        globalDiscountRule.clear();
+      }
+      var isRestricted = globalDiscountRule.where((element) => element.restricted);
+      if (isRestricted.isNotEmpty) return;
+
+      var isAttached = globalDiscountRule.where((element) => element.id == selectedDisc.id);
+      if (isAttached.isNotEmpty) return;
+
+      globalDiscountRule.add(selectedDisc);
+    } else {
+      globalDiscountRule.clear();
+    }
     recalculateGlobalDiscount();
   }
 
@@ -532,6 +543,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                   FilledButton(
                     onPressed: () async {
                       await submitingHistory();
+                      globalDiscountRule.clear();
                     },
                     child: const Text("Checkout"),
                   ),

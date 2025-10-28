@@ -333,6 +333,15 @@ class DiscountRule {
         autoApply: false,
       ),
       DiscountRule(
+        id: 504,
+        name: "Buy Min Rp 300.000 get disc 50%",
+        type: DiscountType.minAmount,
+        discountPercent: 50,
+        minAmount: 300000,
+        autoApply: false,
+        restricted: true,
+      ),
+      DiscountRule(
         id: 601,
         name: "Buy 2 Pepsi + 1 Chips get 20k",
         type: DiscountType.bundling,
