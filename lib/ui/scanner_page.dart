@@ -555,7 +555,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                   controller: scrollController,
                   itemCount: _cartDataView.length,
                   separatorBuilder: (_, __) => const Divider(height: 32, color: Colors.grey),
-                  itemBuilder: (context, index) => _cartCard(_cartDataView[index]),
+                  itemBuilder: (context, index) => _cartCard2(_cartDataView[index]),
                 ),
               ),
               SizedBox(height: 8),
@@ -762,6 +762,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
@@ -778,10 +779,6 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                 Text("$qty × ${price.toRupiah()}", style: const TextStyle(fontSize: 13, color: Colors.black54)),
                 if (isDiscounted && (discountAmount ?? 0) > 0) ...[
                   Text(
-                    "Disc: ${discountAmount!.toRupiah()}",
-                    style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                  Text(
                     "$discName",
                     style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500),
                   ),
@@ -794,6 +791,13 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (isDiscounted && (discountAmount ?? 0) > 0) ...[
+                Text(
+                  "Disc: ${discountAmount!.toRupiah()}",
+                  style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500),
+                  textAlign: TextAlign.right,
+                ),
+              ],
               Text(
                 normal.toRupiah(),
                 style: TextStyle(
@@ -817,6 +821,126 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
               ],
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cartCard2(CartItem item) {
+    return GestureDetector(
+      onTap: () async {
+        showDialog(item);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCartRow2(item),
+          const Divider(),
+
+          // Control buttons for TOTAL qty (not per row)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    splashRadius: 22,
+                    onPressed: () {
+                      setState(() {
+                        _recalculateCart(item, -1);
+                      });
+                    },
+                  ),
+                  Text("${item.qty}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    splashRadius: 22,
+                    onPressed: () {
+                      setState(() {
+                        _recalculateCart(item, 1);
+                      });
+                    },
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    splashRadius: 20,
+                    onPressed: () {
+                      setState(() {
+                        _cartData.removeWhere((e) => e.id == item.id);
+                        _cartDataView.removeWhere((e) => e.id == item.id);
+                        _recalculateCart(item, null);
+                      });
+                    },
+                  ),
+                  Text(
+                    (item.qty * item.price).toRupiah(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCartRow2(CartItem item) {
+    final price = item.price.toDouble();
+    final qty = item.qty;
+    final discount = item.discountApplied.toDouble();
+    final hasDiscount = discount > 0 || (item.manualDiscountAmount ?? 0) > 0;
+    final subTotal = price * qty;
+
+    final discountQty = item.qtyDiscounted;
+    final normalQty = item.qty - discountQty;
+
+    // Calculate totals
+    final totalDiscounted = (price * discountQty) - discount;
+    final totalNormal = price * normalQty;
+    final totalDiscountBeforeDisc = item.price * discountQty;
+
+    if (hasDiscount && discountQty > 0) {
+      String discName = "";
+      if (item.discName != null && item.manualDiscountRule != null) {
+        discName = "${item.discName ?? ""} \n${item.manualDiscountRule != null ? item.manualDiscountRule?.name : ''}";
+      } else if (item.discName != null) {
+        discName = item.discName ?? "-";
+      } else if (item.manualDiscountRule != null) {
+        discName = item.manualDiscountRule?.name ?? "-";
+      }
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: Text(item.name, style: TextStyle(fontWeight: FontWeight.w500)),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "${item.qty} x ${item.price.toRupiah()}",
+                style: TextStyle(color: Colors.black.withValues(alpha: 0.5), fontSize: 12),
+              ),
+              Text(subTotal.toRupiah()),
+            ],
+          ),
+          Divider(thickness: 1, color: Colors.grey.withValues(alpha: 0.4)),
         ],
       ),
     );

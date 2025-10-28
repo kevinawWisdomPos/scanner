@@ -283,6 +283,7 @@ void normalCombination(List<CartItem> updatedCart, Map<int, List<DiscountCandida
     target.qtyDiscounted = cand.discountQty;
     target.discName = cand.discName;
     target.autoDiscountId = cand.discId;
+    target.targetItemId = cand.targetId;
   }
 }
 
