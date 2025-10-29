@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:scanner/models/discount.dart';
 import 'package:scanner/utils/torupiah.dart';
 
-Future<DiscountRule?> showManualDiscountDialog(BuildContext context) async {
-  final manualDiscounts = DiscountRule.discountRules().where((rule) => rule.autoApply == false).toList();
+Future<DiscountRule?> showManualDiscountDialog(BuildContext context, {int type = 0}) async {
+  final allRules = DiscountRule.discountRules();
+
+  final manualDiscounts = allRules.where((rule) {
+    if (rule.autoApply) return false;
+    return type == 0 ? !rule.globalDisc : rule.globalDisc;
+  }).toList();
 
   return showDialog<DiscountRule>(
     context: context,

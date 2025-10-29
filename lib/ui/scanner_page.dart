@@ -36,7 +36,9 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   final List<DiscountUsage> _discountUsage = [];
 
   final List<CartItem> _cartData = [];
+  final List<CartItem> _cartDataCalculated = [];
   final List<CartItem> _cartDataView = [];
+
   final List<Map<String, dynamic>> _shownData = [];
 
   DateTime scannedTime = DateTime.now();
@@ -55,6 +57,8 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   List<DiscountRule> globalDiscountRule = [];
   double totalAmount = 0;
   double totalDiscAmount = 0;
+
+  Map<int, int> linkedItem = {};
 
   @override
   void initState() {
@@ -122,9 +126,18 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   void recalibratingListVIew() {
     final newCart = recalculateDiscounts(_cartData, _discountRules, _discountItemLink, _discountUsage, scannedTime);
 
-    _cartDataView
+    _cartDataCalculated
       ..clear()
       ..addAll(newCart);
+
+    var temp = groupLinkedItems(_cartDataCalculated);
+    _cartDataView
+      ..clear()
+      ..addAll(temp["visibleCart"]);
+    linkedItem.clear();
+    linkedItem = temp["linkedMap"];
+
+    log("message : ${_cartDataView.length}");
 
     _controller.clear();
     recalculateGlobalDiscount();
@@ -249,7 +262,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
       final nowIso = scannedTime.toIso8601String();
 
-      for (final item in _cartDataView) {
+      for (final item in _cartDataCalculated) {
         // Save purchase history
         batch.insert('purchase_history', {'itemId': item.id, 'itemName': item.name, 'qty': item.qty, 'date': nowIso});
 
@@ -309,6 +322,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
 
       setState(() {
         _cartData.clear();
+        _cartDataCalculated.clear();
         _cartDataView.clear();
       });
       if (mounted) {
@@ -327,9 +341,12 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   void recalculateGlobalDiscount() {
-    final subtotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.price * item.qty));
-    final discTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + item.discountApplied);
-    final manualDiscTotal = _cartDataView.fold<double>(0.0, (sum, item) => sum + (item.manualDiscountAmount ?? 0));
+    final subtotal = _cartDataCalculated.fold<double>(0.0, (sum, item) => sum + (item.price * item.qty));
+    final discTotal = _cartDataCalculated.fold<double>(0.0, (sum, item) => sum + item.discountApplied);
+    final manualDiscTotal = _cartDataCalculated.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.manualDiscountAmount ?? 0),
+    );
     final totalDisc = discTotal + manualDiscTotal;
     totalDiscAmount = 0;
     totalAmount = subtotal - totalDiscAmount - totalDisc;
@@ -354,7 +371,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     setState(() {});
   }
 
-  Future<void> showDialog(CartItem item) async {
+  Future<void> showDialog(CartItem item, {int type = 0}) async {
     final manualRule = await showManualDiscountDialog(context);
     if (manualRule == null) return;
 
@@ -363,7 +380,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   Future<void> showGlobalDiscAmount() async {
-    var selectedDisc = await showManualDiscountDialog(context);
+    var selectedDisc = await showManualDiscountDialog(context, type: 1);
     if (selectedDisc != null) {
       if (selectedDisc.restricted) {
         globalDiscountRule.clear();
@@ -518,14 +535,13 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   }
 
   Widget _cart() {
-    if (_cartDataView.isEmpty) return const SizedBox.shrink();
+    if (_cartDataCalculated.isEmpty) return const SizedBox.shrink();
     return DraggableScrollableSheet(
       initialChildSize: 0.4,
       minChildSize: 0.3,
       maxChildSize: 0.9,
       builder: (context, scrollController) {
         return Container(
-          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -536,28 +552,31 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("🛒 CART", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  FilledButton(
-                    onPressed: () async {
-                      await submitingHistory();
-                      globalDiscountRule.clear();
-                    },
-                    child: const Text("Checkout"),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.separated(
-                  controller: scrollController,
-                  itemCount: _cartDataView.length,
-                  separatorBuilder: (_, __) => const Divider(height: 32, color: Colors.grey),
-                  itemBuilder: (context, index) => _cartCard2(_cartDataView[index]),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("🛒 CART", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    FilledButton(
+                      onPressed: () async {
+                        await submitingHistory();
+                        globalDiscountRule.clear();
+                      },
+                      child: const Text("Checkout"),
+                    ),
+                  ],
                 ),
               ),
+              // Expanded(
+              //   child: ListView.separated(
+              //     controller: scrollController,
+              //     itemCount: _cartDataView.length,
+              //     separatorBuilder: (_, __) => const Divider(height: 32, color: Colors.grey),
+              //     itemBuilder: (context, index) => _cartCard(_cartDataView[index]),
+              //   ),
+              // ),
+              Expanded(child: _cartCard2(scrollController)),
               SizedBox(height: 8),
               GestureDetector(
                 onTap: () {
@@ -718,7 +737,7 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
                     onPressed: () {
                       setState(() {
                         _cartData.removeWhere((e) => e.id == item.id);
-                        _cartDataView.removeWhere((e) => e.id == item.id);
+                        _cartDataCalculated.removeWhere((e) => e.id == item.id);
                         _recalculateCart(item, null);
                       });
                     },
@@ -826,66 +845,25 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
     );
   }
 
-  Widget _cartCard2(CartItem item) {
-    return GestureDetector(
-      onTap: () async {
-        showDialog(item);
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildCartRow2(item),
-          const Divider(),
-
-          // Control buttons for TOTAL qty (not per row)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    splashRadius: 22,
-                    onPressed: () {
-                      setState(() {
-                        _recalculateCart(item, -1);
-                      });
-                    },
-                  ),
-                  Text("${item.qty}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    splashRadius: 22,
-                    onPressed: () {
-                      setState(() {
-                        _recalculateCart(item, 1);
-                      });
-                    },
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.redAccent),
-                    splashRadius: 20,
-                    onPressed: () {
-                      setState(() {
-                        _cartData.removeWhere((e) => e.id == item.id);
-                        _cartDataView.removeWhere((e) => e.id == item.id);
-                        _recalculateCart(item, null);
-                      });
-                    },
-                  ),
-                  Text(
-                    (item.qty * item.price).toRupiah(),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ],
-              ),
-            ],
+  Widget _cartCard2(ScrollController? controller) {
+    return ListView.builder(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      controller: controller,
+      itemCount: _cartDataView.length,
+      itemBuilder: (context, index) => GestureDetector(
+        onTap: () async {
+          showDialog(_cartDataView[index]);
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.fromLTRB(10, 10, 0, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black.withValues(alpha: 0.2), offset: Offset(1, 2))],
           ),
-        ],
+          child: _buildCartRow2(_cartDataView[index]),
+        ),
       ),
     );
   }
@@ -893,56 +871,164 @@ class _HardwareScannerPageState extends State<HardwareScannerPage> {
   Widget _buildCartRow2(CartItem item) {
     final price = item.price.toDouble();
     final qty = item.qty;
-    final discount = item.discountApplied.toDouble();
-    final hasDiscount = discount > 0 || (item.manualDiscountAmount ?? 0) > 0;
     final subTotal = price * qty;
 
+    // discount
+    final discount = item.discountApplied.toDouble();
+    final hasDiscount = discount > 0 || (item.manualDiscountAmount ?? 0) > 0;
     final discountQty = item.qtyDiscounted;
     final normalQty = item.qty - discountQty;
 
     // Calculate totals
     final totalDiscounted = (price * discountQty) - discount;
-    final totalNormal = price * normalQty;
     final totalDiscountBeforeDisc = item.price * discountQty;
 
+    List<String> discName = [];
     if (hasDiscount && discountQty > 0) {
-      String discName = "";
-      if (item.discName != null && item.manualDiscountRule != null) {
-        discName = "${item.discName ?? ""} \n${item.manualDiscountRule != null ? item.manualDiscountRule?.name : ''}";
-      } else if (item.discName != null) {
-        discName = item.discName ?? "-";
-      } else if (item.manualDiscountRule != null) {
-        discName = item.manualDiscountRule?.name ?? "-";
+      if (item.discName != null) {
+        discName.add(item.discName!);
+      }
+      if (item.manualDiscountRule != null) {
+        discName.add(item.manualDiscountRule!.name);
       }
     }
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: Text(item.name, style: TextStyle(fontWeight: FontWeight.w500)),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "${item.qty} x ${item.price.toRupiah()}",
-                style: TextStyle(color: Colors.black.withValues(alpha: 0.5), fontSize: 12),
+
+    CartItem? targetItem;
+
+    final targetId = linkedItem[item.id];
+    if (targetId != null) {
+      targetItem = _cartDataCalculated.firstWhere((e) => e.id == targetId);
+    }
+
+    return Column(
+      children: [
+        // normal item
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(item.name, style: TextStyle(fontWeight: FontWeight.w500)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              _recalculateCart(item, -1);
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.all(Radius.circular(5)),
+                                color: Colors.black.withValues(alpha: 0.05),
+                              ),
+                              padding: EdgeInsets.all(5),
+                              child: Icon(Icons.remove, size: 15),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Text("${item.qty}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () {
+                              _recalculateCart(item, 1);
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.all(Radius.circular(5)),
+                                color: Colors.black.withValues(alpha: 0.05),
+                              ),
+                              padding: EdgeInsets.all(5),
+                              child: Icon(Icons.add, size: 15),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 5),
+                  Visibility(
+                    visible: normalQty > 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "$normalQty x ${item.price.toRupiah()}",
+                          style: TextStyle(color: Colors.black.withValues(alpha: 0.5), fontSize: 12),
+                        ),
+                        Text(subTotal.toRupiah()),
+                      ],
+                    ),
+                  ),
+                  Visibility(
+                    visible: discountQty > 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "$discountQty x ${item.price.toRupiah()}",
+                              style: TextStyle(color: Colors.green[600], fontSize: 12),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  (discountQty * price).toRupiah(),
+                                  style: TextStyle(
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    decoration: TextDecoration.lineThrough,
+                                    decorationThickness: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 5),
+                                Text(totalDiscounted.toRupiah()),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                discName.join(', '),
+                                style: TextStyle(color: Colors.green[600], fontSize: 12),
+                              ),
+                            ),
+                            Text(
+                              "Disc: ${totalDiscountBeforeDisc.toRupiah()}",
+                              style: TextStyle(color: Colors.green[600], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              Text(subTotal.toRupiah()),
-            ],
-          ),
-          Divider(thickness: 1, color: Colors.grey.withValues(alpha: 0.4)),
-        ],
-      ),
+            ),
+            GestureDetector(
+              onTap: () {
+                _cartData.removeWhere((e) => e.id == item.id);
+                _cartDataCalculated.removeWhere((e) => e.id == item.id);
+                _recalculateCart(item, null);
+              },
+              child: Container(
+                decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(5))),
+                padding: EdgeInsets.all(5),
+                child: Icon(Icons.delete, color: Colors.redAccent, size: 20),
+              ),
+            ),
+          ],
+        ),
+
+        // discounted item
+        if (targetItem != null) ...[SizedBox(height: 15), _buildCartRow2(targetItem)],
+      ],
     );
   }
 }

@@ -203,7 +203,7 @@ List<CartItem> recalculateDiscounts(
 
       discountCandidatesBySource.putIfAbsent(item.id, () => []);
       discountCandidatesBySource[item.id]!.add(
-        DiscountCandidate(item.id, targetItemId, discountValue, discountedQty, rule.name, rule.id),
+        DiscountCandidate(item.id, targetItemId, discountValue, discountedQty, rule.name, rule.id, link),
       );
     }
   }
@@ -221,8 +221,17 @@ class DiscountCandidate {
   final int discountQty;
   final String discName;
   final int discId;
+  final DiscountItemLink itemLink;
 
-  DiscountCandidate(this.itemId, this.targetId, this.value, this.discountQty, this.discName, this.discId);
+  DiscountCandidate(
+    this.itemId,
+    this.targetId,
+    this.value,
+    this.discountQty,
+    this.discName,
+    this.discId,
+    this.itemLink,
+  );
 }
 
 int recalculateEligibleQty(int eligible, int usage, int? max) {
@@ -283,7 +292,7 @@ void normalCombination(List<CartItem> updatedCart, Map<int, List<DiscountCandida
     target.qtyDiscounted = cand.discountQty;
     target.discName = cand.discName;
     target.autoDiscountId = cand.discId;
-    target.targetItemId = cand.targetId;
+    target.discountLink = cand.itemLink;
   }
 }
 
@@ -315,7 +324,8 @@ void bestCombination1(List<CartItem> updatedCart, Map<int, List<DiscountCandidat
       ..discountApplied = 0
       ..qtyDiscounted = 0
       ..discName = null
-      ..autoDiscountId = null;
+      ..autoDiscountId = null
+      ..discountLink = null;
   }
 
   // Apply the selected best discounts
@@ -330,7 +340,8 @@ void bestCombination1(List<CartItem> updatedCart, Map<int, List<DiscountCandidat
       ..discountApplied = cand.value
       ..qtyDiscounted = cand.discountQty
       ..discName = cand.discName
-      ..autoDiscountId = cand.discId;
+      ..autoDiscountId = cand.discId
+      ..discountLink = cand.itemLink;
   }
 }
 
@@ -370,6 +381,7 @@ void bestCombination2(List<CartItem> updatedCart, Map<int, List<DiscountCandidat
         usableQty,
         cand.discName,
         cand.discId,
+        cand.itemLink,
       ),
     );
 
@@ -547,4 +559,24 @@ double recalculateManualDiscounts(DiscountRule rule, CartItem item, List<Discoun
   item.discountApplied = previousAutoDiscount + discountValue;
   item.manualDiscountRule = rule;
   return discountValue;
+}
+
+Map<String, dynamic> groupLinkedItems(List<CartItem> cart) {
+  final Map<int, int> linkedMap = {};
+  final List<CartItem> visibleCart = [];
+
+  for (final item in cart) {
+    final link = item.discountLink;
+
+    if (link != null && link.targetItemId != null && link.targetItemId != link.itemId) {
+      linkedMap[link.itemId] = link.targetItemId!;
+      // Skip adding to visible list
+      continue;
+    }
+
+    // keep this item if no link or same id
+    visibleCart.add(item);
+  }
+
+  return {'linkedMap': linkedMap, 'visibleCart': visibleCart};
 }

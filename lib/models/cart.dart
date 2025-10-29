@@ -1,4 +1,5 @@
 import 'package:scanner/models/discount.dart';
+import 'package:scanner/models/discount_cart.dart';
 
 class CartItem {
   final int id;
@@ -12,7 +13,7 @@ class CartItem {
   double discountApplied;
   int qtyDiscounted;
   bool isRestricted;
-  int? targetItemId;
+  DiscountItemLink? discountLink;
 
   // manual discount
   DiscountRule? manualDiscountRule;
@@ -29,7 +30,7 @@ class CartItem {
     this.autoDiscountId,
     this.manualDiscountAmount,
     this.discName,
-    this.targetItemId,
+    this.discountLink,
     this.manualDiscountRule,
   });
 

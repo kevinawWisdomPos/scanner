@@ -13,6 +13,7 @@ class DiscountRule {
   final int? buyQty;
   final int? getQty;
   final bool autoApply;
+  final bool globalDisc;
   final double? minAmount;
   final double? maxAmount;
 
@@ -47,6 +48,7 @@ class DiscountRule {
     this.buyQty,
     this.getQty,
     this.autoApply = true,
+    this.globalDisc = false,
     this.maxQty,
     this.minAmount,
     this.maxAmount,
@@ -323,6 +325,7 @@ class DiscountRule {
         discountPercent: 10,
         minAmount: 250000,
         autoApply: false,
+        globalDisc: true,
       ),
       DiscountRule(
         id: 504,
@@ -331,6 +334,7 @@ class DiscountRule {
         discountAmount: 30000,
         minAmount: 250000,
         autoApply: false,
+        globalDisc: true,
       ),
       DiscountRule(
         id: 504,
@@ -340,6 +344,7 @@ class DiscountRule {
         minAmount: 300000,
         autoApply: false,
         restricted: true,
+        globalDisc: true,
       ),
       DiscountRule(
         id: 601,
@@ -348,7 +353,6 @@ class DiscountRule {
         discountAmount: 20000,
         buyQty: 2,
         getQty: 1,
-        autoApply: true,
       ),
       DiscountRule(
         id: 602,
@@ -357,7 +361,6 @@ class DiscountRule {
         discountAmount: 50000,
         buyQty: 5,
         getQty: 5,
-        autoApply: true,
       ),
       DiscountRule(
         id: 701,
