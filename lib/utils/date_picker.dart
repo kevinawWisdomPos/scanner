@@ -13,7 +13,7 @@ Future<DateTime?> pickDateTime(BuildContext context, {DateTime? initialDate}) as
 
   if (date == null) return null; // User canceled
 
-  // Step 2: Pick a time
+  // ignore: use_build_context_synchronously
   final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(initialDate ?? now));
 
   if (time == null) return null; // User canceled
